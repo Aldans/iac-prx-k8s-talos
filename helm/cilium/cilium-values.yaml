@@ -1,0 +1,62 @@
+cluster:
+  name: tl01
+
+# values.yaml for Cilium on Talos Linux
+
+kubeProxyReplacement: true
+k9sServiceHost: "localhost"
+k8sServiceHost: "localhost"
+k8sServicePort: 7445
+
+#ingressController:
+#  enabled: true
+
+ipam:
+  mode: "kubernetes"
+
+# cni:
+#   binPath: "/opt/cni/bin"
+
+securityContext:
+  capabilities:
+    ciliumAgent: ["CHOWN", "KILL", "NET_ADMIN", "NET_RAW", "IPC_LOCK", "SYS_ADMIN", "SYS_RESOURCE", "DAC_OVERRIDE", "FOWNER", "SETGID", "SETUID"]
+    cleanCiliumState: ["NET_ADMIN", "SYS_ADMIN", "SYS_RESOURCE"]
+
+cgroup:
+  autoMount:
+    enabled: false
+  hostRoot: "/sys/fs/cgroup"
+
+hubble:
+  enabled: true
+  relay:
+    enabled: true
+  ui:
+    enabled: true
+
+operator:
+  replicas: 1
+
+# Additional settings that might be useful
+hostServices:
+  enabled: false
+
+nodePort:
+  enabled: true
+
+externalIPs:
+  enabled: true
+
+hostPort:
+  enabled: true
+
+image:
+  pullPolicy: IfNotPresent
+
+routingMode: "native"
+autoDirectNodeRoutes: true
+
+ipv4NativeRoutingCIDR: "10.244.0.0/8"
+
+# Adjust these according to your cluster setup
+devices: "eth0"

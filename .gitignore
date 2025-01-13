@@ -1,0 +1,32 @@
+# Local .terraform directories
+**/.terraform/*
+
+#  Ignore variables files
+*.auto.tfvars
+
+#  Ignore override files
+*.tfoverride
+
+#  Ignore environment-specific files
+.envrc
+
+#  Ignore CLI configuration files
+.terraformrc
+terraform.rc
+
+#  Ignore
+terraform.tfstate*
+.terraform.lock*
+.terraform.tfstate.d/*
+.terraform/tfstate.lock.hcl
+.terraform.tfstate.lock.info
+
+# Ignore vscode
+**/.vscode/*
+
+# Ignore *config
+kubeconfig
+talosconfig
+
+# DEV
+test
