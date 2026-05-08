@@ -186,6 +186,12 @@ variable "cilium_devices" {
   default     = "eth0"
 }
 
+variable "cilium_ingress_enabled" {
+  type        = bool
+  description = "Enable Cilium's built-in Ingress controller (replaces ingress-nginx). Cilium serves `kind: Ingress` directly via embedded Envoy. cert-manager and existing manifests keep working — just point ingressClassName at `cilium`."
+  default     = true
+}
+
 ###############################################################################
 # OCI Registry mirror (optional)
 ###############################################################################

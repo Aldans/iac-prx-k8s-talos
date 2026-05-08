@@ -56,3 +56,35 @@ variable "k8s_service_port" {
   description = "Port Cilium uses to reach the API server. Default 7445 = Talos KubePrism."
   default     = 7445
 }
+
+###############################################################################
+# Built-in Cilium Ingress controller (Envoy-based).
+# When enabled, Cilium serves `kind: Ingress` resources directly — no separate
+# ingress-nginx / Traefik / etc. needed. cert-manager works as usual; just
+# point ClusterIssuer solvers at `ingressClassName: cilium`.
+#
+# Docs: https://docs.cilium.io/en/stable/network/servicemesh/ingress/
+###############################################################################
+
+variable "ingress_enabled" {
+  type        = bool
+  description = "Enable Cilium's built-in Ingress controller. Replaces ingress-nginx for the same `kind: Ingress` API. Requires kubeProxyReplacement (already on)."
+  default     = false
+}
+
+variable "ingress_default" {
+  type        = bool
+  description = "Register the Cilium IngressClass as the cluster default. When true, `kind: Ingress` resources without an explicit ingressClassName route to Cilium. Ignored when ingress_enabled = false."
+  default     = true
+}
+
+variable "ingress_loadbalancer_mode" {
+  type        = string
+  description = "How Cilium provisions LB services for Ingress. `shared` = one LB service for ALL Ingresses (recommended for home labs — fewer external IPs). `dedicated` = per-Ingress LB. Ignored when ingress_enabled = false."
+  default     = "shared"
+
+  validation {
+    condition     = contains(["shared", "dedicated"], var.ingress_loadbalancer_mode)
+    error_message = "ingress_loadbalancer_mode: must be 'shared' or 'dedicated'."
+  }
+}

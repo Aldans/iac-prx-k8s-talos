@@ -22,6 +22,7 @@ The Helm values template (`templates/values.yaml.tftpl`) configures Cilium for *
 - `k8sServiceHost: localhost` + `k8sServicePort: 7445` — Talos KubePrism, an in-cluster TCP load balancer that fronts every CP API server, so Cilium does not depend on a single CP being alive.
 - `routingMode: native` + `autoDirectNodeRoutes: true` + `ipv4NativeRoutingCIDR = var.pod_cidr`.
 - Hubble + Hubble UI enabled.
+- **Optional Ingress controller** (`var.ingress_enabled = true`) — Cilium serves `kind: Ingress` directly via embedded Envoy. Replaces ingress-nginx without changing manifest API. The created LoadBalancer service picks up its IP from a `CiliumLoadBalancerIPPool` (managed in the GitOps repo, not in this module).
 
 ## Usage
 
@@ -33,6 +34,8 @@ module "cilium" {
   cilium_version  = var.cilium_version
   pod_cidr        = var.pod_cidr
   cilium_devices  = var.cilium_devices
+
+  ingress_enabled = true       # Cilium becomes the default IngressClass
 
   kubeconfig_path = module.talos_cluster.kubeconfig_path
   kubeconfig_sha  = module.talos_cluster.kubeconfig_sha
@@ -77,6 +80,9 @@ No modules.
 | <a name="input_cilium_devices"></a> [cilium\_devices](#input\_cilium\_devices) | Network interfaces Cilium uses for native routing. Glob patterns supported (eth+, ens+). | `string` | `"eth0"` | no |
 | <a name="input_cilium_version"></a> [cilium\_version](#input\_cilium\_version) | Cilium Helm chart version. | `string` | n/a | yes |
 | <a name="input_cluster_name"></a> [cluster\_name](#input\_cluster\_name) | Cilium cluster name (passed into helm values as cluster.name). | `string` | n/a | yes |
+| <a name="input_ingress_default"></a> [ingress\_default](#input\_ingress\_default) | Register the Cilium IngressClass as the cluster default. When true, `kind: Ingress` resources without an explicit ingressClassName route to Cilium. Ignored when ingress\_enabled = false. | `bool` | `true` | no |
+| <a name="input_ingress_enabled"></a> [ingress\_enabled](#input\_ingress\_enabled) | Enable Cilium's built-in Ingress controller. Replaces ingress-nginx for the same `kind: Ingress` API. Requires kubeProxyReplacement (already on). | `bool` | `false` | no |
+| <a name="input_ingress_loadbalancer_mode"></a> [ingress\_loadbalancer\_mode](#input\_ingress\_loadbalancer\_mode) | How Cilium provisions LB services for Ingress. `shared` = one LB service for ALL Ingresses (recommended for home labs — fewer external IPs). `dedicated` = per-Ingress LB. Ignored when ingress\_enabled = false. | `string` | `"shared"` | no |
 | <a name="input_k8s_service_host"></a> [k8s\_service\_host](#input\_k8s\_service\_host) | Address Cilium uses to reach the API server. Default `localhost` exploits Talos KubePrism so Cilium does not depend on a single CP being alive. | `string` | `"localhost"` | no |
 | <a name="input_k8s_service_port"></a> [k8s\_service\_port](#input\_k8s\_service\_port) | Port Cilium uses to reach the API server. Default 7445 = Talos KubePrism. | `number` | `7445` | no |
 | <a name="input_kubeconfig_path"></a> [kubeconfig\_path](#input\_kubeconfig\_path) | Filesystem path of a kubeconfig that grants access to the target cluster. Consumed both by the wait\_apiserver provisioner and by the helm provider configured in the parent. | `string` | n/a | yes |

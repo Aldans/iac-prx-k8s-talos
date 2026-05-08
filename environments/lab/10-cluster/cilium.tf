@@ -9,6 +9,11 @@ module "cilium" {
   pod_cidr       = var.pod_cidr
   cilium_devices = var.cilium_devices
 
+  # Cilium serves `kind: Ingress` itself — no ingress-nginx in this cluster.
+  # The LB service it creates picks up its IP from CiliumLoadBalancerIPPool
+  # (managed in home-lab-flux/infrastructure/controllers/cilium-lb).
+  ingress_enabled = var.cilium_ingress_enabled
+
   # Kubeconfig from the talos-cluster module. content_sha256 changes when the
   # config is regenerated (e.g. var.dns_domain change → new cluster_endpoint),
   # which retriggers cilium's wait_apiserver provisioner.

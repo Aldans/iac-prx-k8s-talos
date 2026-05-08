@@ -1,10 +1,13 @@
 # Cilium values for Talos.
-# Rendered through templatefile() in 03_cilium.tf — variables:
-#   $${cluster_name}     — Cilium cluster name (= var.cluster_name)
-#   $${k8s_service_host} — FQDN or localhost (KubePrism for kubeProxyReplacement)
-#   $${k8s_service_port} — 7445 for Talos (KubePrism)
-#   $${pod_cidr}         — IPv4 CIDR for native routing (= var.pod_cidr)
-#   $${devices}          — Cilium network interfaces (= var.cilium_devices)
+# Rendered through templatefile() in modules/cilium/main.tf — variables:
+#   $${cluster_name}              — Cilium cluster name (= var.cluster_name)
+#   $${k8s_service_host}          — FQDN or localhost (KubePrism for kubeProxyReplacement)
+#   $${k8s_service_port}          — 7445 for Talos (KubePrism)
+#   $${pod_cidr}                  — IPv4 CIDR for native routing (= var.pod_cidr)
+#   $${devices}                   — Cilium network interfaces (= var.cilium_devices)
+#   $${ingress_enabled}           — bool, when true Cilium serves `kind: Ingress`
+#   $${ingress_default}           — bool, when true the Cilium IngressClass is the cluster default
+#   $${ingress_loadbalancer_mode} — "shared" | "dedicated"
 
 cluster:
   name: ${cluster_name}
@@ -73,3 +76,17 @@ autoDirectNodeRoutes: true
 ipv4NativeRoutingCIDR: ${pod_cidr}
 
 devices: ${devices}
+
+%{ if ingress_enabled ~}
+# ----- Built-in Ingress controller (Envoy) ----------------------------------
+# `kind: Ingress` resources are served directly by Cilium. cert-manager works
+# with `ingressClassName: cilium`. The created LoadBalancer service picks up
+# its external IP from a CiliumLoadBalancerIPPool (see infrastructure/
+# controllers/cilium-lb in the Flux repo).
+ingressController:
+  enabled: true
+  default: ${ingress_default}
+  loadbalancerMode: ${ingress_loadbalancer_mode}
+  service:
+    type: LoadBalancer
+%{ endif ~}
