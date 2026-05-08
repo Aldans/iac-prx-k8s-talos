@@ -131,6 +131,7 @@ No hardcoded timeouts — only real probes.
 - **Never** hardcode `cluster.name` inside `cilium-values.yaml` — use `templatefile()` with `var.cluster_name`.
 - Secrets live exclusively in `credentials.auto.tfvars` per stack (gitignored, `chmod 600`). In code, only `var.*` with `sensitive = true`.
 - **Pre-commit hooks** (`.pre-commit-config.yaml`) gate every commit: gitleaks, `terraform fmt/validate/tflint`, `terraform-docs` (regenerates *Inputs and outputs* between `<!-- BEGIN_TF_DOCS -->` markers in each stack's `README.md`), plus generic hygiene. Edits inside the markers will be overwritten — change `variables.tf`/`outputs.tf` instead. Setup: `brew install pre-commit gitleaks terraform-docs tflint just && pre-commit install`.
+- **GitHub Actions CI** (`.github/workflows/terraform-checks.yml`) is the server-side mirror — runs the same checks on every PR + push to `main`, plus `checkov` for security baseline. `terraform plan` is deliberately not in CI: the Garage S3 backend lives on the home-lab LAN and is unreachable from GitHub-hosted runners. Adding plan-on-PR later requires a self-hosted runner.
 - **Multi-env via copy, not Terraform workspaces.** New env: `cp -a environments/lab environments/staging`, edit tfvars + backend key. Workspaces share configuration but split state — when env-specific patches diverge, that's a footgun.
 
 ## Debugging paths

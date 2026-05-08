@@ -71,15 +71,22 @@ This also closes **#11 (terraform-docs auto-generation)** — the markers and ho
 
 ## 🟡 P1 — Significant value
 
-### 5. CI/CD pipeline (GitHub Actions)
+### 5. CI/CD pipeline (GitHub Actions) ✅ DONE (2026-05-08)
 **Problem:** Quality checks run only locally; PRs may merge without verification.
 
-**Solution:** `.github/workflows/`:
-- `terraform-checks.yml` — fmt, validate, tflint, checkov, trivy, gitleaks on every PR.
-- `terraform-plan.yml` — `terraform plan` posted as a PR comment.
-- (Advanced) Atlantis or Terraform Cloud for PR-driven apply.
+**Implemented:** `.github/workflows/terraform-checks.yml` runs on every PR and push to `main`:
+- `fmt` — `terraform fmt -check -recursive` (blocking)
+- `validate` — `terraform init -backend=false && validate` over each stack and each module (blocking; matrix job)
+- `tflint` — same `.tflint.hcl` as local pre-commit, walks every stack and module (blocking)
+- `gitleaks` — full-history secret scan (blocking)
+- `checkov` — Terraform-aware security baseline (`soft_fail: true` initially — comments on PR but does not block merge; flip to hard-fail after triaging the first PR's findings)
 
-**Effort:** 2-3 hours.
+**Not yet:** `terraform plan` on PR. Garage S3 backend lives on the home-lab LAN, unreachable from GitHub-hosted runners. Adding plan-on-PR later requires a self-hosted runner on the Proxmox host. Tracked as a follow-up.
+
+**Follow-up tasks** (out of scope for this PR):
+- Configure GitHub branch protection on `main`: require all CI checks green, no force-push, signed commits.
+- After the first PR runs, triage `checkov` findings and flip `soft_fail` to `false`.
+- Replace the deprecated `proxmox_virtual_environment_download_file` resource with `proxmox_download_file` (warning surfaced by `terraform validate` on bpg/proxmox 0.106+).
 
 ---
 

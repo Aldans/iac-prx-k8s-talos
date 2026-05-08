@@ -103,6 +103,7 @@ Every env owns its own state, its own VMs, and its own Flux repo.
 |---|---|
 | **Terraform ≥ 1.10** | IaC engine. Native S3 locking via `use_lockfile` (no DynamoDB). |
 | **pre-commit** | Auto-runs `gitleaks`, `terraform fmt/validate/tflint/docs`, hygiene hooks on every `git commit`. See [`.pre-commit-config.yaml`](.pre-commit-config.yaml). |
+| **GitHub Actions** | Server-side mirror of pre-commit + checkov security scan. Runs on every PR and push to `main`. See [`.github/workflows/terraform-checks.yml`](.github/workflows/terraform-checks.yml). |
 | **just** | Workflow runner — `just <recipe>`. |
 | **Claude Code** | Multi-agent crew under `.claude/` (auditors, staff-engineer, infra-tester) with slash commands `/audit`, `/fix`, `/test`, `/cycle`, `/deploy-prep`, `/post-deploy`. |
 
@@ -121,13 +122,15 @@ Backlog is in [`TODO.md`](./TODO.md). Closed so far:
 
 - ✅ #1 Remote state backend (Garage S3 + native locking)
 - ✅ #2 Pre-commit hooks
+- ✅ #5 GitHub Actions CI (fmt + validate + tflint + gitleaks + checkov)
+- ✅ #6 Reusable modules (`modules/{cilium,flux-bootstrap,talos-cluster,storage}`)
 - ✅ #11 terraform-docs auto-generation
 
 Next:
 
-- 🟡 #6 Extract `modules/talos-cluster`, `modules/cilium`, `modules/flux-bootstrap` (Phase 2 of the monorepo restructure)
-- 🟡 #5 GitHub Actions CI (`fmt + validate + tflint + checkov + gitleaks + plan-on-PR`)
 - 🟡 #7 GitOps template repo (baseline cert-manager / ingress / monitoring / ESO)
+- 🟡 #3 Dedicated `terraform@pve` Proxmox user (replace `root@pam`)
+- 🔴 #4 etcd backup strategy
 
 ---
 

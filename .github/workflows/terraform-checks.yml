@@ -1,0 +1,148 @@
+name: terraform-checks
+
+# Mirrors the local pre-commit suite, plus a security scan (checkov), as a
+# server-side quality gate. Triggers on PRs to main and direct pushes to main.
+#
+# What this workflow intentionally does NOT do:
+#   - terraform plan / apply — the S3 backend (Garage) lives on the home-lab
+#     LAN and is unreachable from GitHub-hosted runners. Adding plan later
+#     requires a self-hosted runner; tracked separately.
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+
+# Cancel obsolete runs when a branch receives a new push — saves Actions minutes.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+  pull-requests: write   # so checkov-action can post a comment on the PR
+
+env:
+  # Pinned to match required_version >= 1.10.0 in providers.tf / versions.tf.
+  TERRAFORM_VERSION: "1.10.5"
+  TFLINT_VERSION: "v0.60.0"
+
+jobs:
+  # ------------------------------------------------------------------
+  # 1. Formatting — single recursive check across the whole repo.
+  # ------------------------------------------------------------------
+  fmt:
+    name: terraform fmt -check
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: ${{ env.TERRAFORM_VERSION }}
+          terraform_wrapper: false
+
+      - run: terraform fmt -check -recursive
+
+  # ------------------------------------------------------------------
+  # 2. Validate — each stack and each module independently.
+  #    `init -backend=false` skips backend wiring (no Garage credentials
+  #    in CI), but the resource graph and provider plugins still load.
+  # ------------------------------------------------------------------
+  validate:
+    name: terraform validate (${{ matrix.target }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        target:
+          - environments/lab/00-storage
+          - environments/lab/10-cluster
+          - modules/cilium
+          - modules/flux-bootstrap
+          - modules/talos-cluster
+          - modules/storage
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: ${{ env.TERRAFORM_VERSION }}
+          terraform_wrapper: false
+
+      - name: terraform init
+        working-directory: ${{ matrix.target }}
+        run: terraform init -backend=false -input=false
+
+      - name: terraform validate
+        working-directory: ${{ matrix.target }}
+        run: terraform validate
+
+  # ------------------------------------------------------------------
+  # 3. tflint — same .tflint.hcl as local pre-commit.
+  # ------------------------------------------------------------------
+  tflint:
+    name: tflint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: terraform-linters/setup-tflint@v4
+        with:
+          tflint_version: ${{ env.TFLINT_VERSION }}
+
+      - name: tflint --init
+        run: tflint --init
+        env:
+          # Avoid GitHub API rate limits when downloading rulesets.
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: tflint per stack/module
+        run: |
+          set -euo pipefail
+          for d in environments/*/*/ modules/*/; do
+            echo "::group::tflint $d"
+            tflint --chdir="$d" --config="$(pwd)/.tflint.hcl"
+            echo "::endgroup::"
+          done
+
+  # ------------------------------------------------------------------
+  # 4. gitleaks — secret scan across the working tree AND history.
+  # ------------------------------------------------------------------
+  gitleaks:
+    name: gitleaks
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # gitleaks-action scans the full history; needs all commits.
+          fetch-depth: 0
+
+      - uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # GITLEAKS_LICENSE only needed for org accounts; skip for personal.
+
+  # ------------------------------------------------------------------
+  # 5. checkov — Terraform-aware security baseline.
+  #    soft_fail = true: this job posts findings as PR comments but does
+  #    not block merge yet. After triaging the initial findings (TODO #5
+  #    follow-up) flip to soft_fail = false to make it gate.
+  # ------------------------------------------------------------------
+  checkov:
+    name: checkov
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: bridgecrewio/checkov-action@master
+        with:
+          directory: .
+          framework: terraform
+          quiet: true
+          soft_fail: true
+          # Skip rules that don't apply to a self-hosted home-lab.
+          # CKV_TF_1: requires module pinning to a versioned source — irrelevant
+          #           for `source = "../../../modules/X"` local refs.
+          skip_check: CKV_TF_1
