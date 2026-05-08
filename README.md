@@ -7,7 +7,7 @@ Terraform monorepo for a self-hosted Kubernetes home lab on Proxmox. Layered int
 | **`environments/<env>/00-storage`** | Garage (S3-compatible state + blob store) + Zot (OCI registry mirror) on a single Proxmox VM | local (chicken-and-egg with the bucket itself) |
 | **`environments/<env>/10-cluster`** | Talos VMs → Cilium CNI → Flux GitOps → kubeconfig/talosconfig | remote in `00-storage`'s Garage bucket |
 
-GitOps manifests (apps + cluster-internal infra) live in a **separate** GitHub repo bootstrapped by `10-cluster` — Flux watches `clusters/<cluster_name>/` there.
+GitOps manifests live in a **separate sibling repo** at [`../home-lab-flux/`](../home-lab-flux/) — `10-cluster` creates the GitHub repo via `flux_bootstrap_git`, you push the baseline (cilium-lb + cert-manager + ingress-nginx + apps skeleton) from `home-lab-flux/`, Flux syncs it. See [`../home-lab-flux/README.md`](../home-lab-flux/README.md) for the layout and bootstrap workflow.
 
 ---
 
@@ -124,13 +124,14 @@ Backlog is in [`TODO.md`](./TODO.md). Closed so far:
 - ✅ #2 Pre-commit hooks
 - ✅ #5 GitHub Actions CI (fmt + validate + tflint + gitleaks + checkov)
 - ✅ #6 Reusable modules (`modules/{cilium,flux-bootstrap,talos-cluster,storage}`)
+- ✅ #7 GitOps template baseline (sibling repo `../home-lab-flux/` — cilium-lb + cert-manager + ingress-nginx)
 - ✅ #11 terraform-docs auto-generation
 
 Next:
 
-- 🟡 #7 GitOps template repo (baseline cert-manager / ingress / monitoring / ESO)
 - 🟡 #3 Dedicated `terraform@pve` Proxmox user (replace `root@pam`)
 - 🔴 #4 etcd backup strategy
+- 🟢 #10 Architecture Decision Records
 
 ---
 

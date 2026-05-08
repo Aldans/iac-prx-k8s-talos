@@ -106,17 +106,37 @@ State migration done via `moved {}` blocks in each stack's `moved.tf` — verifi
 
 ---
 
-### 7. GitOps template repo
+### 7. GitOps template repo ✅ DONE (2026-05-08, baseline only)
 **Problem:** The Flux repository is empty after bootstrap; the user has to design the layout and pick components.
 
-**Solution:** A separate repo `flux-template-mf` with a working baseline:
-- `cert-manager` + Let's Encrypt issuer.
-- `ingress-nginx` (or Cilium L7 ingress).
-- `external-secrets-operator` + 1Password/Vault provider.
-- `kube-prometheus-stack` (Prometheus + Grafana + Alertmanager + Hubble metrics).
-- `loki-stack` (logs).
-- `sealed-secrets` for bootstrap secrets.
-- `velero` (backup of K8s objects to MinIO).
+**Implemented:** Sibling repo `../home-lab-flux/` (separate git workspace). Standard Flux multi-tenancy layout:
+
+```
+clusters/lab/                     ← entry-point Kustomizations: infrastructure.yaml + apps.yaml
+infrastructure/
+  ├── sources/                    ← HelmRepositories (jetstack, ingress-nginx)
+  ├── controllers/                ← cilium-lb, cert-manager, ingress-nginx (Helm releases)
+  └── configs/cluster-issuers/    ← selfsigned + LE staging (LE prod stub commented out)
+apps/{base,lab}/                  ← user-app skeleton
+```
+
+Validated locally: 20/20 yaml parse, kustomize build all subtrees green, kubectl --dry-run=client accepts cluster-level Kustomizations.
+
+**Workflow** (in `../home-lab-flux/README.md`): `terraform apply lab 10-cluster` → repo created on GitHub → `git remote add origin … && git pull --rebase && git push -u origin main` → Flux syncs in ~1 minute.
+
+**Customisations needed before first push** (placeholders in code, called out in README):
+- LB IP-pool range (must fit dnsmasq DHCP exclusion zone)
+- L2 announcement interface name (`eth0` default)
+- ACME email (Let's Encrypt contact)
+
+### 7-followup. GitOps baseline expansion (NOT done)
+The remaining components from the original wishlist are deferred until there is a concrete need — each carries non-trivial decisions (which secret backend? which storage class? which monitoring vendor?). Add when needed:
+- `external-secrets-operator` (+ 1Password / Vault / SOPS provider)
+- `kube-prometheus-stack` (Prometheus + Grafana + Alertmanager + Hubble metrics)
+- `loki-stack` (logs)
+- `sealed-secrets` for bootstrap secrets
+- `velero` (K8s object backup to Garage)
+- `letsencrypt-prod` ClusterIssuer (uncomment after staging is verified end-to-end)
 
 This becomes the "starter pack" pulled in via Flux Kustomizations.
 

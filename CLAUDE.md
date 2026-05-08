@@ -9,7 +9,7 @@ Terraform monorepo for a self-hosted Kubernetes home lab on Proxmox. Two layered
 1. **`environments/<env>/00-storage`** — Garage (S3-compatible object store) + Zot (OCI registry mirror) on a Proxmox VM. Provides remote Terraform state for the next stack and an LAN image cache for the cluster.
 2. **`environments/<env>/10-cluster`** — Talos OS VMs → Cilium CNI → Flux CD GitOps. After `apply` the cluster is ready and watching a GitHub repo for app manifests.
 
-GitOps manifests (apps + cluster-internal infra) live in a separate GitHub repo created and bootstrapped by `10-cluster`.
+GitOps manifests live in a separate sibling repo at `../home-lab-flux/` (Phase 3). `10-cluster` creates the GitHub repo via `flux_bootstrap_git`; you push the baseline (cilium-lb + cert-manager + ingress-nginx + apps/skeleton) from `home-lab-flux/`, Flux syncs it. See `../home-lab-flux/README.md`.
 
 Stack:
 - **Proxmox VE** — hypervisor (one or more physical nodes)
