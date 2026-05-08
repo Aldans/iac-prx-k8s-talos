@@ -97,6 +97,23 @@ Every env owns its own state, its own VMs, and its own Flux repo.
 
 ---
 
+## Resources protected from destroy
+
+Some resources are intentionally cheap-to-recreate but expensive-to-lose. They carry `lifecycle.prevent_destroy = true` — `terraform destroy` will refuse to remove them until you opt in explicitly.
+
+| Resource | Where | Why protected |
+|---|---|---|
+| `proxmox_virtual_environment_download_file.talos_nocloud_image` | `modules/talos-cluster/images.tf` | ~256 MB Talos image; re-downloading from factory.talos.dev takes 1-2 min on every recreate |
+| `github_repository.flux` | `modules/flux-bootstrap/main.tf` | The cluster's complete GitOps history. Talos VMs are ephemeral; this repo is not |
+
+To destroy a protected resource, see the relevant module README:
+- Talos image: `modules/talos-cluster/README.md` (Resources protected by prevent_destroy section)
+- Flux repo: [`modules/flux-bootstrap/README.md`](./modules/flux-bootstrap/README.md) → "The GitHub repo is `prevent_destroy = true` — by design"
+
+The pattern in both cases: `terraform state rm` the resource (so Terraform stops tracking it), then `terraform destroy` everything else, then handle the protected resource yourself if you really want it gone.
+
+---
+
 ## Tooling
 
 | Tool | Role |

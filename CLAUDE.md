@@ -95,8 +95,17 @@ No hardcoded timeouts — only real probes.
 ## Known limitations
 
 - **Single-endpoint kubeconfig**: `cluster_endpoint` points at the first CP's FQDN. If that CP physically dies, external `kubectl` cannot connect (etcd quorum inside the cluster keeps working). Full HA needs a Talos VIP — backlogged (TODO #9).
-- **GitHub repo creation**: if `${github_owner}/${github_repo}` already exists, `apply` fails with 422. Workaround: `terraform import github_repository.flux ${repo_name}` or delete the old repo first.
+- **GitHub repo creation**: if `${github_owner}/${github_repo}` already exists, `apply` fails with 422. Workaround: `terraform import module.flux_bootstrap.github_repository.flux ${repo_name}` or delete the old repo first.
 - **`00-storage` state is local**: chicken-and-egg — Garage stores state but Garage itself does not exist yet on first apply. Mitigations: chmod 600, periodic backup of `environments/<env>/00-storage/terraform.tfstate*` to NAS / encrypted USB.
+
+## Protected resources (prevent_destroy)
+
+Two resources intentionally refuse `terraform destroy` to avoid accidental data loss:
+
+- `module.talos_cluster.proxmox_virtual_environment_download_file.talos_nocloud_image` — saves the multi-minute Talos image download on rebuild.
+- `module.flux_bootstrap.github_repository.flux` — the cluster's GitOps history. Talos is ephemeral; the repo is not.
+
+Destroying either requires `terraform state rm <addr>` first (Terraform stops tracking it, then destroy proceeds for everything else). Full procedure with rebuild-import flow is in `modules/flux-bootstrap/README.md`.
 
 ## Networking conventions (10-cluster)
 

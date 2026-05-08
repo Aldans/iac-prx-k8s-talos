@@ -36,6 +36,17 @@ resource "github_repository" "flux" {
   has_issues   = false
   has_projects = false
   has_wiki     = false
+
+  lifecycle {
+    # The repo holds the cluster's complete GitOps history: every manifest
+    # version, every config drift, every commit you ever pushed. Recreating
+    # the cluster (destroy → apply) MUST NOT delete this — the cluster is
+    # ephemeral, the manifests are not.
+    #
+    # To actually decommission the repo, see modules/flux-bootstrap/README.md
+    # → "Decommissioning the GitOps repo".
+    prevent_destroy = true
+  }
 }
 
 resource "github_repository_deploy_key" "flux" {

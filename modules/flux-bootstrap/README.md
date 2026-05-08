@@ -63,6 +63,76 @@ module "flux_bootstrap" {
 }
 ```
 
+## The GitHub repo is `prevent_destroy = true` — by design
+
+`github_repository.flux` is the single most valuable artifact this module produces: it holds the cluster's entire GitOps history (every manifest, every drift, every commit). Talos VMs are ephemeral; this repo is not.
+
+`terraform destroy` against the cluster stack therefore **fails with**:
+
+```
+Error: Instance cannot be destroyed
+  on ../../../modules/flux-bootstrap/main.tf line N:
+  Resource module.flux_bootstrap.github_repository.flux has lifecycle.prevent_destroy
+  set, but the plan calls for this resource to be destroyed.
+```
+
+This is intentional. Two operational scenarios it serves:
+
+### Scenario A — recreate the cluster, keep the GitOps history (common)
+
+You want to wipe Talos VMs and bring up a fresh cluster against the same GitHub repo. The repo's existing manifests should redeploy automatically into the new cluster.
+
+```bash
+# 1. Drop the GitHub-managed resources from state. They won't be touched on
+#    GitHub, but Terraform stops tracking them.
+terraform -chdir=environments/lab/10-cluster state rm \
+  module.flux_bootstrap.tls_private_key.flux \
+  module.flux_bootstrap.github_repository.flux \
+  module.flux_bootstrap.github_repository_deploy_key.flux \
+  module.flux_bootstrap.flux_bootstrap_git.this
+
+# 2. Destroy the rest (VMs, machine-config, kubeconfig, etc.). Now terraform
+#    no longer thinks it owns the repo, so prevent_destroy doesn't block.
+terraform -chdir=environments/lab/10-cluster destroy
+
+# 3. To bring the cluster back up later, re-import the existing repo before
+#    apply, otherwise apply fails with HTTP 422 ("repository already exists").
+terraform -chdir=environments/lab/10-cluster import \
+  'module.flux_bootstrap.github_repository.flux' '<github_repo>'
+terraform -chdir=environments/lab/10-cluster apply
+# Flux on the new cluster pulls the existing manifests; cluster comes up
+# fully reconciled.
+```
+
+After step 3, a fresh `tls_private_key.flux` is generated and registered as a NEW deploy key on the existing repo — rotating credentials cleanly. Old deploy key (no longer in state) lingers on GitHub until removed manually:
+
+```bash
+gh repo deploy-key list -R <owner>/<github_repo>
+gh repo deploy-key delete -R <owner>/<github_repo> <id>
+```
+
+### Scenario B — actually decommission the repo (rare)
+
+You want to delete the GitOps repo permanently (cluster gone, project archived).
+
+```bash
+# 1. State-rm as in Scenario A (so Terraform stops protecting it).
+terraform -chdir=environments/lab/10-cluster state rm \
+  module.flux_bootstrap.tls_private_key.flux \
+  module.flux_bootstrap.github_repository.flux \
+  module.flux_bootstrap.github_repository_deploy_key.flux \
+  module.flux_bootstrap.flux_bootstrap_git.this
+
+# 2. Destroy the rest of the cluster.
+terraform -chdir=environments/lab/10-cluster destroy
+
+# 3. Delete the repo on GitHub yourself (the destructive choice is
+#    yours, not Terraform's).
+gh repo delete <owner>/<github_repo> --yes
+```
+
+Both scenarios converge on the same key idea: **Terraform never automatically deletes the GitOps repo.** Anyone wanting it gone has to do `state rm` + `gh repo delete` deliberately, in two separate steps. Hard to do by accident.
+
 <!-- BEGIN_TF_DOCS -->
 ## Requirements
 
