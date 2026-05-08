@@ -9,6 +9,29 @@ Based on the post-deploy review (2026-05-07).
 > navigation; per-stack READMEs hold the deep-dive. Justfile + `.editorconfig`
 > added. Phase 2 (extract `modules/*`) is TODO #6 below.
 
+> **Operational gotcha discovered 2026-05-08:** When `terraform apply` upgrades
+> the Cilium Helm release with new feature flags (e.g. flipping
+> `var.cilium_ingress_enabled = true`), the `cilium-agent` and
+> `cilium-operator` pods do **not** auto-restart on ConfigMap-only changes —
+> the Cilium chart does not stamp a `checksum/configmap` annotation on the
+> pod template. If the new feature requires the operator to register CRDs
+> (`ciliumenvoyconfigs`, `ciliumclusterwideenvoyconfigs` for ingressController),
+> the new agent pods then hang in init waiting for those CRDs forever.
+>
+> Fix: after `terraform apply` that touches Cilium values, run:
+> ```bash
+> kubectl -n kube-system rollout restart deploy/cilium-operator
+> kubectl -n kube-system rollout status  deploy/cilium-operator
+> kubectl -n kube-system rollout restart ds/cilium ds/cilium-envoy
+> kubectl -n kube-system rollout status  ds/cilium
+> ```
+> (Operator MUST be restarted first so CRDs land before agents start polling.)
+>
+> Long-term TODO: either (a) add a `null_resource` in `modules/cilium` that
+> triggers `kubectl rollout restart` on values-checksum change, or (b) add a
+> `just rollout-cilium` recipe in the Justfile and document it in the apply
+> runbook.
+
 Legend:
 - 🔴 **P0** — must-have for serious operation
 - 🟡 **P1** — significant value
