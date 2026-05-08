@@ -88,3 +88,39 @@ variable "ingress_loadbalancer_mode" {
     error_message = "ingress_loadbalancer_mode: must be 'shared' or 'dedicated'."
   }
 }
+
+###############################################################################
+# L2 announcements — required for `Service: LoadBalancer` external IPs to be
+# reachable on the LAN. Cilium agents send gratuitous ARP for IPs allocated
+# from CiliumLoadBalancerIPPool, scoped by CiliumL2AnnouncementPolicy.
+#
+# CRDs (CiliumLoadBalancerIPPool, CiliumL2AnnouncementPolicy) ship with the
+# Cilium chart by default, but the runtime feature toggle is OFF unless this
+# value is set. Without it, LB IPs allocate but never resolve via ARP.
+#
+# Docs: https://docs.cilium.io/en/stable/network/l2-announcements/
+###############################################################################
+
+variable "l2_announcements_enabled" {
+  type        = bool
+  description = "Enable Cilium L2 announcements feature. Required when using CiliumLoadBalancerIPPool + CiliumL2AnnouncementPolicy to make LB IPs reachable on the LAN."
+  default     = false
+}
+
+variable "l2_announcements_lease_duration" {
+  type        = string
+  description = "How long a node holds the L2 lease for an announced IP before it expires. Format: Go duration string. Default 15s strikes a balance between failover speed and API server load."
+  default     = "15s"
+}
+
+variable "k8s_client_qps" {
+  type        = number
+  description = "K8s API client QPS for cilium-agent. Bumped from default 5 → 10 when L2 announcements are on, since lease polling generates additional requests. Set higher (50+) for clusters with many announced IPs."
+  default     = 10
+}
+
+variable "k8s_client_burst" {
+  type        = number
+  description = "K8s API client burst capacity for cilium-agent. See k8s_client_qps."
+  default     = 20
+}

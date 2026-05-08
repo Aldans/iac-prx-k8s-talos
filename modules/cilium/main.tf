@@ -53,14 +53,18 @@ resource "helm_release" "cilium" {
 
   values = [
     templatefile("${path.module}/templates/values.yaml.tftpl", {
-      cluster_name              = var.cluster_name
-      k8s_service_host          = var.k8s_service_host
-      k8s_service_port          = var.k8s_service_port
-      pod_cidr                  = var.pod_cidr
-      devices                   = var.cilium_devices
-      ingress_enabled           = var.ingress_enabled
-      ingress_default           = var.ingress_default
-      ingress_loadbalancer_mode = var.ingress_loadbalancer_mode
+      cluster_name                    = var.cluster_name
+      k8s_service_host                = var.k8s_service_host
+      k8s_service_port                = var.k8s_service_port
+      pod_cidr                        = var.pod_cidr
+      devices                         = var.cilium_devices
+      ingress_enabled                 = var.ingress_enabled
+      ingress_default                 = var.ingress_default
+      ingress_loadbalancer_mode       = var.ingress_loadbalancer_mode
+      l2_announcements_enabled        = var.l2_announcements_enabled
+      l2_announcements_lease_duration = var.l2_announcements_lease_duration
+      k8s_client_qps                  = var.k8s_client_qps
+      k8s_client_burst                = var.k8s_client_burst
     })
   ]
 

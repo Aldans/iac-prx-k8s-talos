@@ -192,6 +192,12 @@ variable "cilium_ingress_enabled" {
   default     = true
 }
 
+variable "cilium_l2_announcements_enabled" {
+  type        = bool
+  description = "Enable L2 announcements so that LoadBalancer IPs allocated from CiliumLoadBalancerIPPool are reachable on the LAN. Required when using cilium-ingress + cilium-lb."
+  default     = true
+}
+
 ###############################################################################
 # OCI Registry mirror (optional)
 ###############################################################################
