@@ -299,7 +299,7 @@ resource "local_file" "talosconfig" {
 # talos_client_configuration where FQDN works). Hence we pass IPs here.
 data "talos_cluster_health" "this" {
   depends_on = [
-    helm_release.cilium,
+    module.cilium,
     talos_machine_configuration_apply.cp,
     talos_machine_configuration_apply.worker,
   ]

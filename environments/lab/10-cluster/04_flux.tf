@@ -44,7 +44,7 @@ resource "github_repository_deploy_key" "flux" {
 resource "flux_bootstrap_git" "this" {
   depends_on = [
     github_repository_deploy_key.flux,
-    helm_release.cilium,
+    module.cilium,
     local_file.kubeconfig,
     data.talos_cluster_health.this,
   ]
