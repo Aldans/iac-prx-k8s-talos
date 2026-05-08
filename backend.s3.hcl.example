@@ -1,0 +1,30 @@
+# Partial backend config for the S3-compatible state backend (Garage / MinIO / AWS S3).
+# Copy to `backend.s3.hcl` (chmod 600), fill in the values, then run:
+#   terraform init -backend-config=backend.s3.hcl
+#
+# The real file is gitignored — only this template is committed.
+
+bucket = "terraform-state"
+key    = "kubernetes_iac/terraform.tfstate"
+
+# Endpoint of your S3-compatible service. For Garage/MinIO inside the lab,
+# use IP if the FQDN does not resolve from the workstation.
+endpoints = { s3 = "http://<storage-host>:<port>" }
+
+# Credentials with read/write on the `bucket` above.
+access_key = "<ACCESS_KEY_ID>"
+secret_key = "<SECRET_ACCESS_KEY>"
+
+# Region is required by the AWS SDK but irrelevant for Garage/MinIO.
+region = "garage"
+
+# Garage/MinIO compatibility flags — leave as-is unless you know better.
+skip_credentials_validation = true
+skip_metadata_api_check     = true
+skip_region_validation      = true
+skip_requesting_account_id  = true
+skip_s3_checksum            = true
+use_path_style              = true
+
+# Native S3 locking (Terraform 1.10+) — no DynamoDB needed.
+use_lockfile = true

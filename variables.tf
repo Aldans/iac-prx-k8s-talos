@@ -1,30 +1,255 @@
-# This file defines the variables used in the Terraform configuration.
+###############################################################################
+# Cluster identity
+###############################################################################
+
 variable "cluster_name" {
-  type    = string
-  default = "tl01"
+  type        = string
+  description = "Talos/Kubernetes cluster name. Used as the hostname prefix for nodes and as the Flux path (clusters/<cluster_name>)."
+  default     = "tl01"
+
+  validation {
+    condition     = can(regex("^[a-z0-9-]{1,32}$", var.cluster_name))
+    error_message = "cluster_name: lowercase letters, digits and hyphens only, up to 32 characters."
+  }
+}
+
+variable "dns_domain" {
+  type        = string
+  description = "DNS domain that dnsmasq on the Proxmox host registers VM hostnames into (via expand-hosts + domain). Node FQDN: <vm_name>.<dns_domain>."
+  default     = "lab.lan"
+}
+
+###############################################################################
+# Proxmox
+###############################################################################
+
+variable "prx" {
+  type = object({
+    endpoint  = string
+    username  = string
+    password  = string
+    api_token = string
+  })
+  sensitive   = true
+  description = "Proxmox API endpoint and credentials."
 }
 
 variable "prx_node" {
-  type    = string
-  default = "pv"
+  type        = string
+  description = "Name of the Proxmox cluster node where VMs will be created."
+  default     = "mf"
 }
 
-variable "prx" {
-    type = object({
-        endpoint     = string
-        username     = string
-        password     = string
-        api_token    = string
-      })
-    sensitive = true
+variable "prx_datastore_image" {
+  type        = string
+  description = "Datastore for the downloaded Talos image (typically 'local' — the ISO storage)."
+  default     = "local"
 }
+
+variable "prx_datastore_vm" {
+  type        = string
+  description = "Datastore for VM disks."
+  default     = "local-zfs"
+}
+
+variable "prx_network_bridge" {
+  type        = string
+  description = "Proxmox network bridge for VMs (the one with dnsmasq + DHCP)."
+  default     = "vmbr1"
+
+  validation {
+    condition     = can(regex("^vmbr\\d+$", var.prx_network_bridge))
+    error_message = "prx_network_bridge: must match vmbr<N>, e.g. vmbr0, vmbr1."
+  }
+}
+
+###############################################################################
+# Talos / Kubernetes versions
+###############################################################################
+
+variable "talos_version" {
+  type        = string
+  description = "Talos OS version (image tag on factory.talos.dev)."
+  default     = "v1.13.0"
+
+  validation {
+    condition     = can(regex("^v\\d+\\.\\d+\\.\\d+$", var.talos_version))
+    error_message = "talos_version: must be vMAJOR.MINOR.PATCH, e.g. v1.13.0."
+  }
+}
+
+variable "talos_schematic_id" {
+  type        = string
+  description = "Schematic ID from factory.talos.dev (hash of the system-extensions bundle). Identical across Talos versions for the same extensions. Generate one at https://factory.talos.dev/"
+  default     = "aeec243e3a4c2a14f9ba74b1a8c7662f03eea658a7ea5f1c26fdd491280c88f8"
+
+  validation {
+    condition     = can(regex("^[a-f0-9]{64}$", var.talos_schematic_id))
+    error_message = "talos_schematic_id: 64 hex characters (sha256)."
+  }
+}
+
+variable "kubernetes_version" {
+  type        = string
+  description = "Kubernetes version for Talos. Passed to data.talos_machine_configuration.kubernetes_version — the provider picks the right image tags for kube-apiserver, scheduler, controller-manager, kubelet."
+  default     = "1.34.0"
+
+  validation {
+    condition     = can(regex("^\\d+\\.\\d+\\.\\d+$", var.kubernetes_version))
+    error_message = "kubernetes_version: MAJOR.MINOR.PATCH without 'v' prefix, e.g. 1.34.0."
+  }
+}
+
+###############################################################################
+# Cluster topology
+###############################################################################
 
 variable "num_control_planes" {
-  type    = number
-  default = 3
+  type        = number
+  description = "Number of control-plane nodes. 3 is recommended for HA."
+  default     = 3
+
+  validation {
+    condition     = var.num_control_planes >= 1 && var.num_control_planes <= 9
+    error_message = "num_control_planes: between 1 and 9. Use 3 or 5 for HA."
+  }
 }
 
 variable "num_workers" {
-  type    = number
-  default = 4
+  type        = number
+  description = "Number of worker nodes."
+  default     = 3
+
+  validation {
+    condition     = var.num_workers >= 0 && var.num_workers <= 99
+    error_message = "num_workers: between 0 and 99."
+  }
+}
+
+variable "cp_resources" {
+  type = object({
+    cores     = number
+    memory_mb = number
+    disk_gb   = number
+  })
+  description = "Resources for each control-plane VM."
+  default = {
+    cores     = 8
+    memory_mb = 8192
+    disk_gb   = 60
+  }
+}
+
+variable "worker_resources" {
+  type = object({
+    cores     = number
+    memory_mb = number
+    disk_gb   = number
+  })
+  description = "Resources for each worker VM."
+  default = {
+    cores     = 12
+    memory_mb = 16000
+    disk_gb   = 120
+  }
+}
+
+###############################################################################
+# Cilium
+###############################################################################
+
+variable "cilium_version" {
+  type        = string
+  description = "Cilium Helm chart version."
+  default     = "1.17.2"
+
+  validation {
+    condition     = can(regex("^\\d+\\.\\d+\\.\\d+$", var.cilium_version))
+    error_message = "cilium_version: MAJOR.MINOR.PATCH, e.g. 1.17.2."
+  }
+}
+
+variable "pod_cidr" {
+  type        = string
+  description = "CIDR for Cilium pod networks (ipv4NativeRoutingCIDR)."
+  default     = "10.244.0.0/16"
+
+  validation {
+    condition     = can(cidrnetmask(var.pod_cidr))
+    error_message = "pod_cidr: must be a valid IPv4 CIDR."
+  }
+}
+
+variable "cilium_devices" {
+  type        = string
+  description = "Network interfaces Cilium uses for native routing. Glob patterns supported (eth+, ens+)."
+  default     = "eth0"
+}
+
+###############################################################################
+# OCI Registry mirror (optional)
+###############################################################################
+
+variable "registry_mirror" {
+  type = object({
+    endpoint             = string
+    insecure_skip_verify = optional(bool, false)
+    ca_cert              = optional(string, null)
+  })
+  default     = null
+  description = <<-EOT
+    Optional pull-through OCI registry mirror. When set, Talos containerd is
+    configured to fetch from this endpoint first for ghcr.io / docker.io /
+    registry.k8s.io / quay.io. Vendor-neutral — works with Garage+Zot, Harbor,
+    Hetzner Container Registry, AWS ECR, Docker Hub Pro mirror, etc.
+
+    - endpoint: full URL incl. scheme and (optional) port. Example: "https://lab-storage.lab.lan:5000".
+    - insecure_skip_verify: true if the mirror uses a self-signed certificate
+      and you do not want to distribute its CA. Trade-off: TLS verification is
+      disabled for THIS mirror only (not for upstream registries).
+    - ca_cert: PEM-encoded CA bundle to trust the mirror; mutually exclusive
+      with insecure_skip_verify in practice.
+  EOT
+
+  validation {
+    condition     = var.registry_mirror == null || can(regex("^https?://[^/]+$|^https?://[^/]+/[^/]*$", var.registry_mirror.endpoint))
+    error_message = "registry_mirror.endpoint must look like https://host[:port] or https://host[:port]/path."
+  }
+}
+
+###############################################################################
+# Flux / GitHub
+###############################################################################
+
+variable "github_token" {
+  type        = string
+  sensitive   = true
+  description = "GitHub Personal Access Token. Required scopes: repo (create + push), admin:public_key (deploy key)."
+}
+
+variable "github_owner" {
+  type        = string
+  description = "GitHub user or organization that owns the Flux repo."
+}
+
+variable "github_repo" {
+  type        = string
+  description = "Name of the GitHub repository that Flux will watch. Created by Terraform as a private repo."
+
+  validation {
+    condition     = can(regex("^[A-Za-z0-9._-]+$", var.github_repo))
+    error_message = "github_repo: letters, digits, dots, hyphens and underscores only."
+  }
+}
+
+variable "flux_branch" {
+  type        = string
+  description = "Branch in the GitHub repo that Flux watches."
+  default     = "main"
+}
+
+variable "flux_path" {
+  type        = string
+  description = "Path inside the Git repo that Flux watches. Defaults to clusters/<cluster_name> when null."
+  default     = null
 }

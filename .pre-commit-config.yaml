@@ -1,0 +1,62 @@
+# Pre-commit hooks for this Terraform IaC repo.
+# Setup: `brew install pre-commit gitleaks terraform-docs tflint` (one-time)
+#        `pre-commit install` (per clone — registers .git/hooks/pre-commit)
+# Run on all files manually: `pre-commit run --all-files`
+
+minimum_pre_commit_version: "3.5.0"
+
+repos:
+  # ---------------------------------------------------------------------------
+  # Generic hygiene
+  # ---------------------------------------------------------------------------
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v6.0.0
+    hooks:
+      - id: end-of-file-fixer
+        exclude: ^(\.terraform/|.*\.tfstate.*|kubeconfig|talosconfig)
+      - id: trailing-whitespace
+        exclude: ^(\.terraform/|.*\.tfstate.*|kubeconfig|talosconfig)
+      - id: check-merge-conflict
+      - id: check-added-large-files
+        args: ["--maxkb=1024"]
+      - id: check-yaml
+        # Skip Terraform templates — they contain ${...} interpolations that
+        # are not valid YAML until rendered.
+        exclude: \.tftpl$
+      - id: check-json
+      - id: detect-private-key
+        # The repo intentionally generates ./kubeconfig and ./talosconfig
+        # locally via local_file resources. They are gitignored, but if a
+        # contributor stages one by accident this hook is the safety net.
+
+  # ---------------------------------------------------------------------------
+  # Secret scanning
+  # ---------------------------------------------------------------------------
+  - repo: https://github.com/gitleaks/gitleaks
+    rev: v8.30.1
+    hooks:
+      - id: gitleaks
+
+  # ---------------------------------------------------------------------------
+  # Terraform: fmt / validate / tflint / docs
+  # ---------------------------------------------------------------------------
+  - repo: https://github.com/antonbabenko/pre-commit-terraform
+    rev: v1.99.5
+    hooks:
+      - id: terraform_fmt
+
+      - id: terraform_validate
+        args:
+          # Re-run init+validate once if the first pass fails because of a
+          # stale .terraform/ cache (provider upgrade, module rename, etc.).
+          - --hook-config=--retry-once-with-cleanup=true
+
+      - id: terraform_tflint
+        args:
+          - --args=--config=__GIT_WORKING_DIR__/.tflint.hcl
+
+      - id: terraform_docs
+        args:
+          - --hook-config=--path-to-file=README.md
+          - --hook-config=--add-to-existing-file=true
+          - --hook-config=--create-file-if-not-exist=false

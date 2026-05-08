@@ -1,0 +1,75 @@
+# Cilium values for Talos.
+# Rendered through templatefile() in 03_cilium.tf — variables:
+#   $${cluster_name}     — Cilium cluster name (= var.cluster_name)
+#   $${k8s_service_host} — FQDN or localhost (KubePrism for kubeProxyReplacement)
+#   $${k8s_service_port} — 7445 for Talos (KubePrism)
+#   $${pod_cidr}         — IPv4 CIDR for native routing (= var.pod_cidr)
+#   $${devices}          — Cilium network interfaces (= var.cilium_devices)
+
+cluster:
+  name: ${cluster_name}
+
+# Talos KubePrism: a local TCP load-balancer at 127.0.0.1:7445 on every node, balancing
+# towards all CP API servers. Cilium goes through it instead of the kubeconfig server
+# so it does not depend on whether the first CP is alive.
+kubeProxyReplacement: true
+k8sServiceHost: ${k8s_service_host}
+k8sServicePort: ${k8s_service_port}
+
+ipam:
+  mode: kubernetes
+
+securityContext:
+  capabilities:
+    ciliumAgent:
+      - CHOWN
+      - KILL
+      - NET_ADMIN
+      - NET_RAW
+      - IPC_LOCK
+      - SYS_ADMIN
+      - SYS_RESOURCE
+      - DAC_OVERRIDE
+      - FOWNER
+      - SETGID
+      - SETUID
+    cleanCiliumState:
+      - NET_ADMIN
+      - SYS_ADMIN
+      - SYS_RESOURCE
+
+cgroup:
+  autoMount:
+    enabled: false
+  hostRoot: /sys/fs/cgroup
+
+hubble:
+  enabled: true
+  relay:
+    enabled: true
+  ui:
+    enabled: true
+
+operator:
+  replicas: 1
+
+hostServices:
+  enabled: false
+
+nodePort:
+  enabled: true
+
+externalIPs:
+  enabled: true
+
+hostPort:
+  enabled: true
+
+image:
+  pullPolicy: IfNotPresent
+
+routingMode: native
+autoDirectNodeRoutes: true
+ipv4NativeRoutingCIDR: ${pod_cidr}
+
+devices: ${devices}
