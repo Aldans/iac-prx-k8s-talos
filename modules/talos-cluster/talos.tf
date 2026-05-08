@@ -1,14 +1,14 @@
 # Talos cluster bootstrap.
 #
 # DNS naming pipeline:
-#   - Proxmox VM name      : tls-cp-01            (see 01_vms.tf)
-#   - Talos hostname       : tls-cp-01            (via machine.network.hostname)
-#   - dnsmasq DNS record   : tls-cp-01.lab.lan    (auto-created by expand-hosts + domain)
+#   - Proxmox VM name      : <prefix>-01            (see vms.tf)
+#   - Talos hostname       : <prefix>-01            (via machine.network.hostname)
+#   - dnsmasq DNS record   : <prefix>-01.<dns>      (auto-created by expand-hosts + domain)
 #
-# The very first machine-config apply uses the temporary DHCP IP from qemu-agent (DNS does not
-# resolve yet — Talos has just learned its hostname). All Talos resources that take a `node`
-# argument carry lifecycle.ignore_changes=[node] so DHCP renewals (the IP may change, the
-# hostname won't) don't cause resource churn on subsequent applies.
+# The very first machine-config apply uses the temporary DHCP IP from qemu-agent (DNS does
+# not resolve yet — Talos has just learned its hostname). All Talos resources that take a
+# `node` argument carry lifecycle.ignore_changes=[node] so DHCP renewals (the IP may change,
+# the hostname won't) don't cause resource churn on subsequent applies.
 
 locals {
   kubernetes_api_port = 6443
@@ -20,7 +20,6 @@ locals {
   pod_cidr_prefix  = "${local._pod_cidr_octets[0]}.${local._pod_cidr_octets[1]}."
 
   # First "real" (DHCP) IPv4 of every node.
-  # Filter: not loopback, not link-local, not inside the Cilium pod CIDR.
   cp_initial_ips = {
     for name, vm in proxmox_virtual_environment_vm.talos_cp :
     name => one([
@@ -48,15 +47,12 @@ locals {
   first_cp_fqdn       = "${local.first_cp_name}.${var.dns_domain}"
 
   # API-server endpoint baked into kubeconfig (kubectl) and used by talosctl.
-  # FQDN of the first CP is stable across DHCP renewals but tied to a single node.
-  # For full HA, swap to a Talos VIP (see CLAUDE.md, "Known limitations").
   cluster_endpoint = "https://${local.first_cp_fqdn}:${local.kubernetes_api_port}"
 
   # Shared part of machineconfig for both CP and worker — extracted to avoid duplication.
-  # Per-node hostname and machine_type are injected per-node below.
   common_machine_config_patch = {
     cluster = {
-      # CNI is disabled — Cilium is installed via Helm in 03_cilium.tf.
+      # CNI is disabled — Cilium is installed via Helm by the cilium module.
       network = {
         cni = {
           name = "none"
@@ -80,7 +76,6 @@ locals {
   # Without this, talosctl --talosconfig=... fails with x509 when connecting via FQDN —
   # Talos auto-adds only the short hostname (= machine.network.hostname), node IPs and
   # localhost to the SAN list, but NOT <hostname>.<dns_domain>.
-  # When var.dns_domain changes, this list re-computes and Talos re-issues the certs.
   talos_cert_sans = concat(
     local.cp_fqdns,
     local.worker_fqdns,
@@ -89,8 +84,6 @@ locals {
   )
 
   # Optional registry mirror config patch (empty when var.registry_mirror is null).
-  # Talos containerd uses the mirror first for the listed upstream hostnames,
-  # then falls back to the upstream registry on a miss.
   registry_mirror_host = var.registry_mirror == null ? "" : regex("^https?://([^/]+)", var.registry_mirror.endpoint)[0]
 
   registry_mirror_patch = var.registry_mirror == null ? null : {
@@ -116,12 +109,10 @@ locals {
 
   # The Talos provider 0.7.x emits hosts.toml with `capabilities = ['pull', 'resolve']`,
   # which makes the mirror authoritative for manifest resolution: a 404 from the mirror
-  # (e.g. an image that has not been pulled-through yet) terminates the pull instead of
-  # falling back to the upstream registry. We work around this by overwriting the
-  # generated hosts.toml files via `machine.files`, dropping `resolve` from capabilities
-  # and adding the `server = ...` upstream fallback line. The result: containerd resolves
-  # manifests at the upstream and fetches blobs from the mirror — exactly what we want
-  # for a pull-through cache like Zot.
+  # terminates the pull instead of falling back to upstream. Workaround: overwrite the
+  # generated hosts.toml files via `machine.files`, dropping `resolve` and adding the
+  # `server = ...` upstream fallback line. Result: containerd resolves manifests at the
+  # upstream and fetches blobs from the mirror — exactly what a pull-through cache wants.
   registry_upstream_servers = {
     "ghcr.io"         = "https://ghcr.io"
     "docker.io"       = "https://registry-1.docker.io"
@@ -149,6 +140,11 @@ locals {
       files = local.registry_hosts_files
     }
   }
+
+  # Local-file output paths — default to the stack root so kubeconfig/talosconfig
+  # land next to the .tf files of the stack consuming this module.
+  kubeconfig_filename  = coalesce(var.kubeconfig_filename, "${path.root}/kubeconfig")
+  talosconfig_filename = coalesce(var.talosconfig_filename, "${path.root}/talosconfig")
 }
 
 resource "talos_machine_secrets" "this" {}
@@ -162,7 +158,6 @@ data "talos_client_configuration" "this" {
 }
 
 # Control-plane machine config — shared template, hostname injected per-node.
-# kubernetes_version is passed straight to the provider, which picks the right image tags.
 data "talos_machine_configuration" "cp" {
   for_each = toset(local.cp_node_names)
 
@@ -215,9 +210,9 @@ data "talos_machine_configuration" "worker" {
   )
 }
 
-# Apply machine config via the temporary DHCP IP (provided by qemu-agent through bpg/proxmox).
+# Apply machine config via the temporary DHCP IP (provided by qemu-agent).
 # After this apply Talos re-requests DHCP carrying its proper hostname → dnsmasq registers DNS.
-# ignore_changes=[node] keeps DHCP renewals from churning this resource on every apply.
+# ignore_changes=[node] keeps DHCP renewals from churning this resource.
 resource "talos_machine_configuration_apply" "cp" {
   for_each = toset(local.cp_node_names)
 
@@ -258,10 +253,9 @@ resource "talos_machine_bootstrap" "this" {
   }
 }
 
-# Pull kubeconfig. The clusterEndpoint inside it equals the first-CP FQDN (see cluster_endpoint).
+# Pull kubeconfig. The clusterEndpoint inside it equals the first-CP FQDN.
 # replace_triggered_by — when cluster_endpoint changes (e.g. var.dns_domain is updated)
-# Terraform recreates this resource so the new server URL lands in kubeconfig automatically;
-# otherwise ./kubeconfig would keep the stale FQDN and kubectl would break silently.
+# Terraform recreates this resource so the new server URL lands in kubeconfig automatically.
 resource "talos_cluster_kubeconfig" "this" {
   depends_on = [talos_machine_bootstrap.this]
 
@@ -270,46 +264,22 @@ resource "talos_cluster_kubeconfig" "this" {
 
   lifecycle {
     ignore_changes = [node]
-    # When cluster_endpoint changes (e.g. var.dns_domain) → the machine config is re-applied →
-    # this resource is recreated, and kubeconfig is re-issued with the new server URL.
     replace_triggered_by = [
       talos_machine_configuration_apply.cp,
     ]
   }
 }
 
-# Local files for kubectl and talosctl.
+# Local files for kubectl and talosctl — written to the stack root by default
+# (path.root inside a module = the working dir of the stack consuming it).
 resource "local_file" "kubeconfig" {
   content         = talos_cluster_kubeconfig.this.kubeconfig_raw
-  filename        = "${path.module}/kubeconfig"
+  filename        = local.kubeconfig_filename
   file_permission = "0600"
 }
 
 resource "local_file" "talosconfig" {
   content         = data.talos_client_configuration.this.talos_config
-  filename        = "${path.module}/talosconfig"
+  filename        = local.talosconfig_filename
   file_permission = "0600"
-}
-
-# Final cluster-health check — runs AFTER Cilium (see 03_cilium.tf), because nodes will never
-# become Ready without a CNI, so this would deadlock if scheduled before Cilium.
-#
-# IMPORTANT: provider siderolabs/talos 0.7.1 parses control_plane_nodes/worker_nodes/endpoints
-# of this data source through netip.ParseAddr — IPs only, NOT FQDNs (unlike
-# talos_client_configuration where FQDN works). Hence we pass IPs here.
-data "talos_cluster_health" "this" {
-  depends_on = [
-    module.cilium,
-    talos_machine_configuration_apply.cp,
-    talos_machine_configuration_apply.worker,
-  ]
-
-  client_configuration = talos_machine_secrets.this.client_configuration
-  endpoints            = values(local.cp_initial_ips)
-  control_plane_nodes  = values(local.cp_initial_ips)
-  worker_nodes         = values(local.worker_initial_ips)
-
-  timeouts = {
-    read = "10m"
-  }
 }

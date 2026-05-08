@@ -1,10 +1,10 @@
 # Proxmox VMs for Talos control-plane and worker nodes.
 # VM name == Talos hostname == dnsmasq DNS record:  <vm_name>.<dns_domain>
-# Hostname is set in machineconfig (see 02_talos.tf); Talos sends it in DHCP option 12.
+# Hostname is set in machineconfig (see talos.tf); Talos sends it in DHCP option 12.
 
 locals {
-  cp_node_names     = [for i in range(var.num_control_planes) : format("tls-cp-%02d", i + 1)]
-  worker_node_names = [for i in range(var.num_workers) : format("tls-wr-%02d", i + 1)]
+  cp_node_names     = [for i in range(var.num_control_planes) : format("%s-%02d", var.cp_hostname_prefix, i + 1)]
+  worker_node_names = [for i in range(var.num_workers) : format("%s-%02d", var.worker_hostname_prefix, i + 1)]
 
   cp_fqdns     = [for n in local.cp_node_names : "${n}.${var.dns_domain}"]
   worker_fqdns = [for n in local.worker_node_names : "${n}.${var.dns_domain}"]

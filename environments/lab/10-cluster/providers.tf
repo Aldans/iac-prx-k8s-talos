@@ -64,7 +64,7 @@ provider "kubernetes" {
 
 provider "helm" {
   kubernetes = {
-    config_path = local_file.kubeconfig.filename
+    config_path = module.talos_cluster.kubeconfig_path
   }
 }
 
@@ -75,7 +75,7 @@ provider "github" {
 
 provider "flux" {
   kubernetes = {
-    config_path = local_file.kubeconfig.filename
+    config_path = module.talos_cluster.kubeconfig_path
   }
   git = {
     url    = "ssh://git@github.com/${var.github_owner}/${var.github_repo}.git"

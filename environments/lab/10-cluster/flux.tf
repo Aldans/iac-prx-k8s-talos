@@ -11,8 +11,8 @@ module "flux_bootstrap" {
   # Apply order: bootstrap only after Cilium is healthy (CNI required for the
   # source-controller pods) and the cluster has reported healthy.
   depends_on = [
+    module.talos_cluster,
     module.cilium,
-    local_file.kubeconfig,
     data.talos_cluster_health.this,
   ]
 }

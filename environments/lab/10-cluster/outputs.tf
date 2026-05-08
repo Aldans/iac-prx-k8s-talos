@@ -4,13 +4,13 @@
 
 output "talosconfig" {
   description = "Talos client config (for talosctl). Also written to ./talosconfig."
-  value       = data.talos_client_configuration.this.talos_config
+  value       = module.talos_cluster.talosconfig
   sensitive   = true
 }
 
 output "kubeconfig" {
   description = "Kubeconfig (for kubectl). Also written to ./kubeconfig."
-  value       = talos_cluster_kubeconfig.this.kubeconfig_raw
+  value       = module.talos_cluster.kubeconfig
   sensitive   = true
 }
 
@@ -25,27 +25,27 @@ output "cluster_name" {
 
 output "cluster_endpoint" {
   description = "API server endpoint (FQDN)."
-  value       = local.cluster_endpoint
+  value       = module.talos_cluster.cluster_endpoint
 }
 
 output "control_plane_fqdns" {
   description = "FQDNs of all control-plane nodes."
-  value       = local.cp_fqdns
+  value       = module.talos_cluster.control_plane_fqdns
 }
 
 output "worker_fqdns" {
   description = "FQDNs of all worker nodes."
-  value       = local.worker_fqdns
+  value       = module.talos_cluster.worker_fqdns
 }
 
 output "control_plane_initial_ips" {
   description = "Initial IPs of CP nodes (from qemu-agent, before DNS settles). Handy for debugging the first apply."
-  value       = local.cp_initial_ips
+  value       = module.talos_cluster.control_plane_initial_ips
 }
 
 output "worker_initial_ips" {
   description = "Initial IPs of worker nodes."
-  value       = local.worker_initial_ips
+  value       = module.talos_cluster.worker_initial_ips
 }
 
 ###############################################################################
