@@ -71,6 +71,7 @@ No modules.
 | Name | Type |
 | ---- | ---- |
 | [helm_release.cilium](https://registry.terraform.io/providers/hashicorp/helm/latest/docs/resources/release) | resource |
+| [null_resource.cilium_rollout](https://registry.terraform.io/providers/hashicorp/null/latest/docs/resources/resource) | resource |
 | [null_resource.wait_apiserver](https://registry.terraform.io/providers/hashicorp/null/latest/docs/resources/resource) | resource |
 
 ## Inputs
@@ -95,6 +96,9 @@ No modules.
 | <a name="input_l2_announcements_enabled"></a> [l2\_announcements\_enabled](#input\_l2\_announcements\_enabled) | Enable Cilium L2 announcements feature. Required when using CiliumLoadBalancerIPPool + CiliumL2AnnouncementPolicy to make LB IPs reachable on the LAN. | `bool` | `false` | no |
 | <a name="input_l2_announcements_lease_duration"></a> [l2\_announcements\_lease\_duration](#input\_l2\_announcements\_lease\_duration) | How long a node holds the L2 lease for an announced IP before it expires. Format: Go duration string. Default 15s strikes a balance between failover speed and API server load. | `string` | `"15s"` | no |
 | <a name="input_pod_cidr"></a> [pod\_cidr](#input\_pod\_cidr) | CIDR for Cilium pod networks (ipv4NativeRoutingCIDR). | `string` | n/a | yes |
+| <a name="input_rollout_daemonset_timeout"></a> [rollout\_daemonset\_timeout](#input\_rollout\_daemonset\_timeout) | Maximum time to wait for ds/cilium + ds/cilium-envoy rollout. Format: kubectl --timeout. Bump if you have many nodes — rolling restart is sequential. | `string` | `"300s"` | no |
+| <a name="input_rollout_on_values_change"></a> [rollout\_on\_values\_change](#input\_rollout\_on\_values\_change) | Automatically rollout-restart cilium-operator + cilium + cilium-envoy when Helm values change. Set false to manage rollouts manually (e.g. via `just rollout-cilium`). | `bool` | `true` | no |
+| <a name="input_rollout_operator_timeout"></a> [rollout\_operator\_timeout](#input\_rollout\_operator\_timeout) | Maximum time to wait for cilium-operator rollout. Format: kubectl --timeout (e.g. '180s', '5m'). | `string` | `"180s"` | no |
 | <a name="input_wait_attempts"></a> [wait\_attempts](#input\_wait\_attempts) | How many 5-second polling iterations wait\_apiserver does before giving up (default = 60 → 5 minutes). | `number` | `60` | no |
 
 ## Outputs

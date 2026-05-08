@@ -65,6 +65,22 @@ status:
     @flux get sources git -A
     @flux get kustomizations -A
 
+# Manually rollout-restart Cilium (operator first, then ds/cilium and ds/cilium-envoy).
+# modules/cilium does this automatically on values change (var.rollout_on_values_change),
+# but use this recipe when:
+#  - the auto-rollout is disabled (var.rollout_on_values_change = false)
+#  - kubectl rollout failed mid-apply and you want to retry without `terraform apply`
+#  - the cilium-config ConfigMap was edited out-of-band and pods need to pick it up
+rollout-cilium:
+    @echo "=== rollout-restart cilium-operator ==="
+    kubectl -n kube-system rollout restart deploy/cilium-operator
+    kubectl -n kube-system rollout status  deploy/cilium-operator --timeout=180s
+    @echo "=== rollout-restart ds/cilium and ds/cilium-envoy ==="
+    kubectl -n kube-system rollout restart ds/cilium ds/cilium-envoy
+    kubectl -n kube-system rollout status  ds/cilium       --timeout=300s
+    kubectl -n kube-system rollout status  ds/cilium-envoy --timeout=300s
+    @echo "✅ Cilium rolled."
+
 # === Repo-wide ===============================================================
 
 # Run all pre-commit hooks on every file

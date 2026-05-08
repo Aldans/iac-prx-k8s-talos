@@ -155,3 +155,36 @@ variable "gateway_api_secrets_namespace" {
   description = "Namespace where Cilium will look up TLS secrets referenced by Gateway listeners. Empty (default) means same-namespace as the Gateway. Ignored when gateway_api_enabled = false."
   default     = ""
 }
+
+###############################################################################
+# Auto rollout-restart on values change.
+# The Cilium Helm chart does NOT stamp a `checksum/cilium-config` annotation
+# on the cilium-agent / cilium-envoy / cilium-operator pod templates. Result:
+# a Helm upgrade that only modifies the ConfigMap (e.g. flipping a feature
+# flag like `gatewayAPI.enabled`) updates the rendered ConfigMap but leaves
+# the DaemonSet pod-template hash unchanged → pods don't restart → the new
+# config never takes effect until a human runs `kubectl rollout restart`.
+#
+# This null_resource closes that gap by triggering its provisioner whenever
+# the rendered Helm values change, restarting in the right order:
+#   1. cilium-operator (registers CRDs needed for new features)
+#   2. ds/cilium + ds/cilium-envoy (pick up new ConfigMap)
+###############################################################################
+
+variable "rollout_on_values_change" {
+  type        = bool
+  description = "Automatically rollout-restart cilium-operator + cilium + cilium-envoy when Helm values change. Set false to manage rollouts manually (e.g. via `just rollout-cilium`)."
+  default     = true
+}
+
+variable "rollout_operator_timeout" {
+  type        = string
+  description = "Maximum time to wait for cilium-operator rollout. Format: kubectl --timeout (e.g. '180s', '5m')."
+  default     = "180s"
+}
+
+variable "rollout_daemonset_timeout" {
+  type        = string
+  description = "Maximum time to wait for ds/cilium + ds/cilium-envoy rollout. Format: kubectl --timeout. Bump if you have many nodes — rolling restart is sequential."
+  default     = "300s"
+}
