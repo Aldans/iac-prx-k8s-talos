@@ -83,20 +83,19 @@ This also closes **#11 (terraform-docs auto-generation)** — the markers and ho
 
 ---
 
-### 6. Reusable modules — Phase 2 of the monorepo restructure
+### 6. Reusable modules ✅ DONE (2026-05-08, Phase 2 of the monorepo restructure)
 **Problem:** Each `environments/lab/{00-storage,10-cluster}` still has all logic inline. Spinning up `staging` means full file-by-file copy.
 
-**Solution:** Extract from `10-cluster`:
-- `modules/talos-cluster/` — VMs + machine secrets + machine config + bootstrap + kubeconfig
-- `modules/cilium/` — CNI Helm release + `wait_apiserver`
-- `modules/flux-bootstrap/` — `github_repository` + deploy key + `flux_bootstrap_git`
+**Implemented:** Four modules, all stacks now thin compositions.
 
-And from `00-storage`:
-- `modules/storage/` — Garage + Zot VM with cloud-init
+| Module | Resources | Stack root reduced to |
+|---|---|---|
+| `modules/cilium` | 2 (`wait_apiserver`, `helm_release`) + helm template | `cilium.tf` ~20 lines |
+| `modules/flux-bootstrap` | 4 (key, repo, deploy key, bootstrap) | `flux.tf` ~20 lines |
+| `modules/talos-cluster` | ~24 (image, VMs, secrets, machine_configs, bootstrap, kubeconfig) | `talos_cluster.tf` ~30 lines |
+| `modules/storage` | 9 (image, randoms, TLS, cloud-init, VM) | `main.tf` ~30 lines |
 
-After extraction the env roots become 30-line compositions. New env = copy of one root + tfvars.
-
-**Effort:** 4-6 hours.
+State migration done via `moved {}` blocks in each stack's `moved.tf` — verified `terraform plan = 0/0/0` after each round. Adding a new env (`staging`) is now `cp -a environments/lab environments/staging` + tfvars edits.
 
 ---
 
