@@ -6,7 +6,7 @@
 # — saving the multi-minute re-download on every cycle.
 #
 # To actually delete the image: temporarily comment out the lifecycle block
-# (or run `terraform state rm proxmox_virtual_environment_download_file.debian_cloud`),
+# (or `terraform state rm proxmox_virtual_environment_download_file.debian_cloud`),
 # then destroy or remove it manually from Proxmox storage.
 
 resource "proxmox_virtual_environment_download_file" "debian_cloud" {

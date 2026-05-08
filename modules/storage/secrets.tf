@@ -1,5 +1,5 @@
 # Secrets generated locally and baked into cloud-init.
-# Outputs expose the access keys (sensitive) so the cluster project can configure
+# Outputs expose the access keys (sensitive) so the cluster stack can configure
 # Terraform's S3 backend and Zot's S3 storage driver.
 
 # Garage gossip / RPC secret. 32 hex bytes (= 64 hex chars).

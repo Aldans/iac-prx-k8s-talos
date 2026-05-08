@@ -1,6 +1,6 @@
 # Self-signed TLS for Zot.
 # Talos clients trust it via insecureSkipVerify=true OR by passing ca_cert into
-# the cluster project's var.registry_mirror.
+# the cluster stack's var.registry_mirror.
 
 resource "tls_private_key" "zot" {
   algorithm   = "ECDSA"
