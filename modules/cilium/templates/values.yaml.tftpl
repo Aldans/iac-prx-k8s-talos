@@ -12,6 +12,9 @@
 #   $${l2_announcements_lease_duration} — Go duration; node lease lifetime per announced IP
 #   $${k8s_client_qps}                  — kube API client rate limit (bumped when L2 announcements on)
 #   $${k8s_client_burst}                — kube API client burst
+#   $${gateway_api_enabled}             — bool, when true Cilium serves Gateway API
+#   $${gateway_api_create_class}        — bool, whether chart creates `cilium` GatewayClass
+#   $${gateway_api_secrets_namespace}   — string, optional cross-namespace TLS secret allowlist
 
 cluster:
   name: ${cluster_name}
@@ -110,4 +113,20 @@ l2announcements:
 k8sClientRateLimit:
   qps: ${k8s_client_qps}
   burst: ${k8s_client_burst}
+%{ endif ~}
+
+%{ if gateway_api_enabled ~}
+# ----- Gateway API (Cilium native) ------------------------------------------
+# Modern replacement for `kind: Ingress`. Same Envoy data plane (cilium-envoy
+# DaemonSet) — no extra workload. Gateway API CRDs must be installed
+# separately; in this repo: home-lab-flux/infrastructure/controllers/
+# gateway-api-crds/.
+gatewayAPI:
+  enabled: true
+  gatewayClass:
+    create: ${gateway_api_create_class ? "\"true\"" : "\"false\""}
+%{ if gateway_api_secrets_namespace != "" ~}
+  secretsNamespace:
+    name: ${gateway_api_secrets_namespace}
+%{ endif ~}
 %{ endif ~}

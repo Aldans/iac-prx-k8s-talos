@@ -65,6 +65,9 @@ resource "helm_release" "cilium" {
       l2_announcements_lease_duration = var.l2_announcements_lease_duration
       k8s_client_qps                  = var.k8s_client_qps
       k8s_client_burst                = var.k8s_client_burst
+      gateway_api_enabled             = var.gateway_api_enabled
+      gateway_api_create_class        = var.gateway_api_create_class
+      gateway_api_secrets_namespace   = var.gateway_api_secrets_namespace
     })
   ]
 

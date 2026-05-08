@@ -188,13 +188,19 @@ variable "cilium_devices" {
 
 variable "cilium_ingress_enabled" {
   type        = bool
-  description = "Enable Cilium's built-in Ingress controller (replaces ingress-nginx). Cilium serves `kind: Ingress` directly via embedded Envoy. cert-manager and existing manifests keep working — just point ingressClassName at `cilium`."
+  description = "Enable Cilium's classic Ingress controller (`kind: Ingress`). Set false when migrating to Gateway API — keep one or the other to avoid two LB services competing for the same listener."
+  default     = false
+}
+
+variable "cilium_gateway_api_enabled" {
+  type        = bool
+  description = "Enable Cilium's native Gateway API support (`kind: Gateway` / `kind: HTTPRoute`). Modern replacement for the classic Ingress controller; CRDs are installed via the GitOps repo (infrastructure/controllers/gateway-api-crds/)."
   default     = true
 }
 
 variable "cilium_l2_announcements_enabled" {
   type        = bool
-  description = "Enable L2 announcements so that LoadBalancer IPs allocated from CiliumLoadBalancerIPPool are reachable on the LAN. Required when using cilium-ingress + cilium-lb."
+  description = "Enable L2 announcements so that LoadBalancer IPs allocated from CiliumLoadBalancerIPPool are reachable on the LAN. Required when using cilium-ingress / cilium-gateway + cilium-lb."
   default     = true
 }
 

@@ -124,3 +124,34 @@ variable "k8s_client_burst" {
   description = "K8s API client burst capacity for cilium-agent. See k8s_client_qps."
   default     = 20
 }
+
+###############################################################################
+# Gateway API — modern replacement for `kind: Ingress`. Cilium ships native
+# Gateway API support since 1.14; same Envoy data plane that powers Ingress.
+#
+# Gateway API CRDs (gateway.networking.k8s.io/v1: Gateway, GatewayClass,
+# HTTPRoute) are NOT installed by the Cilium chart — they must be installed
+# separately (in this repo: home-lab-flux/infrastructure/controllers/
+# gateway-api-crds/). Without the CRDs present, Cilium agent will hang on
+# init waiting for them, exactly like the envoyconfig CRDs gotcha.
+#
+# Docs: https://docs.cilium.io/en/stable/network/servicemesh/gateway-api/
+###############################################################################
+
+variable "gateway_api_enabled" {
+  type        = bool
+  description = "Enable Cilium's native Gateway API support. Requires Gateway API CRDs to be installed in the cluster (out of scope for this module — managed in the GitOps repo)."
+  default     = false
+}
+
+variable "gateway_api_create_class" {
+  type        = bool
+  description = "Whether the chart creates the `cilium` GatewayClass automatically. Set false if multiple Cilium installations share a cluster (rare). Ignored when gateway_api_enabled = false."
+  default     = true
+}
+
+variable "gateway_api_secrets_namespace" {
+  type        = string
+  description = "Namespace where Cilium will look up TLS secrets referenced by Gateway listeners. Empty (default) means same-namespace as the Gateway. Ignored when gateway_api_enabled = false."
+  default     = ""
+}

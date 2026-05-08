@@ -9,14 +9,18 @@ module "cilium" {
   pod_cidr       = var.pod_cidr
   cilium_devices = var.cilium_devices
 
-  # Cilium serves `kind: Ingress` itself — no ingress-nginx in this cluster.
-  # The LB service it creates picks up its IP from CiliumLoadBalancerIPPool
-  # (managed in home-lab-flux/infrastructure/controllers/cilium-lb).
+  # Classic Ingress controller — disabled in favour of Gateway API below.
+  # Keep var-level toggle so a different env can pick the other side.
   ingress_enabled = var.cilium_ingress_enabled
+
+  # Gateway API native support. Requires Gateway API CRDs (installed via
+  # home-lab-flux/infrastructure/controllers/gateway-api-crds/). Cilium
+  # creates `cilium` GatewayClass automatically when this flips on.
+  gateway_api_enabled = var.cilium_gateway_api_enabled
 
   # Cilium agents ARP-announce LB IPs from the IP pool (scoped via
   # CiliumL2AnnouncementPolicy in the Flux repo). Without this the
-  # cilium-ingress LB has an EXTERNAL-IP but no one resolves it.
+  # cilium-ingress / cilium-gateway LB has an EXTERNAL-IP but no one resolves it.
   l2_announcements_enabled = var.cilium_l2_announcements_enabled
 
   # Kubeconfig from the talos-cluster module. content_sha256 changes when the
