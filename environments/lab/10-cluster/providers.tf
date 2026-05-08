@@ -82,7 +82,7 @@ provider "flux" {
     branch = var.flux_branch
     ssh = {
       username    = "git"
-      private_key = tls_private_key.flux.private_key_pem
+      private_key = module.flux_bootstrap.private_key_pem
     }
   }
 }

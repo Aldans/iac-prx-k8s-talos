@@ -54,15 +54,15 @@ output "worker_initial_ips" {
 
 output "flux_repository_url" {
   description = "URL of the Git repository Flux watches."
-  value       = github_repository.flux.html_url
+  value       = module.flux_bootstrap.repository_url
 }
 
 output "flux_repository_ssh_url" {
   description = "SSH URL used by Flux for git operations."
-  value       = github_repository.flux.ssh_clone_url
+  value       = module.flux_bootstrap.repository_ssh_url
 }
 
 output "flux_path" {
   description = "Path inside the repository that Flux watches."
-  value       = local.flux_path
+  value       = module.flux_bootstrap.flux_path
 }

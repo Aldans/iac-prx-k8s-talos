@@ -18,3 +18,25 @@ moved {
   from = helm_release.cilium
   to   = module.cilium.helm_release.cilium
 }
+
+# ───────── Round 2.2 — modules/flux-bootstrap ─────────
+
+moved {
+  from = tls_private_key.flux
+  to   = module.flux_bootstrap.tls_private_key.flux
+}
+
+moved {
+  from = github_repository.flux
+  to   = module.flux_bootstrap.github_repository.flux
+}
+
+moved {
+  from = github_repository_deploy_key.flux
+  to   = module.flux_bootstrap.github_repository_deploy_key.flux
+}
+
+moved {
+  from = flux_bootstrap_git.this
+  to   = module.flux_bootstrap.flux_bootstrap_git.this
+}

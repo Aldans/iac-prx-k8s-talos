@@ -31,6 +31,10 @@ terraform.tfstate*
 .terraform/tfstate.lock.hcl
 .terraform.tfstate.lock.info
 
+# Provider lock files inside modules — only stack roots should pin versions.
+# Created when pre-commit's terraform_validate hook walks into module dirs.
+modules/*/.terraform.lock.hcl
+
 # Backend partial-config files. Contain S3 credentials for the Garage/MinIO
 # state bucket. Use backend.s3.hcl.example as a template.
 backend.s3.hcl
