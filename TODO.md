@@ -3,6 +3,12 @@
 Prioritized backlog of professional-grade improvements for this home-lab IaC.
 Based on the post-deploy review (2026-05-07).
 
+> **2026-05-08 — Monorepo restructure: Phase 1 ✅** Both `kubernetes_iac` and
+> `storage_bootstrap` now live in a single repo as
+> `environments/lab/{00-storage,10-cluster}`. Top-level `README.md` is
+> navigation; per-stack READMEs hold the deep-dive. Justfile + `.editorconfig`
+> added. Phase 2 (extract `modules/*`) is TODO #6 below.
+
 Legend:
 - 🔴 **P0** — must-have for serious operation
 - 🟡 **P1** — significant value
@@ -77,15 +83,18 @@ This also closes **#11 (terraform-docs auto-generation)** — the markers and ho
 
 ---
 
-### 6. Reusable modules
-**Problem:** Everything sits in a single root module. Spinning up a second cluster (dev/staging) means copy-paste.
+### 6. Reusable modules — Phase 2 of the monorepo restructure
+**Problem:** Each `environments/lab/{00-storage,10-cluster}` still has all logic inline. Spinning up `staging` means full file-by-file copy.
 
-**Solution:** Refactor into:
-- `modules/talos-cluster/` — VMs + machine secrets + machine config + bootstrap + kubeconfig.
-- `modules/cilium/` — CNI Helm release + wait-apiserver.
-- `modules/flux-bootstrap/` — github_repository + deploy key + flux_bootstrap_git.
-- Root module just composes the three.
-- Future: a second cluster needs only its own root + module references.
+**Solution:** Extract from `10-cluster`:
+- `modules/talos-cluster/` — VMs + machine secrets + machine config + bootstrap + kubeconfig
+- `modules/cilium/` — CNI Helm release + `wait_apiserver`
+- `modules/flux-bootstrap/` — `github_repository` + deploy key + `flux_bootstrap_git`
+
+And from `00-storage`:
+- `modules/storage/` — Garage + Zot VM with cloud-init
+
+After extraction the env roots become 30-line compositions. New env = copy of one root + tfvars.
 
 **Effort:** 4-6 hours.
 

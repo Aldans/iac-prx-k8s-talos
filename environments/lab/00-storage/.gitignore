@@ -1,0 +1,32 @@
+# Local .terraform directories
+**/.terraform/*
+
+# tfvars (may contain secrets); allow only -exemple/-example templates
+*.tfvars
+!*.tfvars-exemple
+!*.tfvars-example
+!*.tfvars.example
+
+# Terraform plan files (may contain secrets)
+*.tfplan
+
+# State files
+terraform.tfstate*
+.terraform.tfstate.d/*
+.terraform/tfstate.lock.hcl
+.terraform.tfstate.lock.info
+
+# Crash logs
+crash.log
+crash.*.log
+
+# Override files
+*.tfoverride
+
+# IDE
+**/.vscode/*
+**/.idea/*
+
+# macOS
+.DS_Store
+**/.DS_Store

@@ -1,66 +1,76 @@
 # CLAUDE.md
 
-Context file for Claude Code. Helps Claude grasp the project quickly without re-discovering everything.
+Context file for AI assistants working on this monorepo. Helps grasp the project quickly without re-discovering everything.
 
 ## Project goal
 
-Terraform IaC for **fully automated** Kubernetes home-lab bootstrap on Proxmox. After `terraform apply` the user gets a ready-to-use GitOps cluster: just commit manifests to the GitHub repository and Flux syncs them into the cluster.
+Terraform monorepo for a self-hosted Kubernetes home lab on Proxmox. Two layered stacks bring it up end-to-end:
+
+1. **`environments/<env>/00-storage`** — Garage (S3-compatible object store) + Zot (OCI registry mirror) on a Proxmox VM. Provides remote Terraform state for the next stack and an LAN image cache for the cluster.
+2. **`environments/<env>/10-cluster`** — Talos OS VMs → Cilium CNI → Flux CD GitOps. After `apply` the cluster is ready and watching a GitHub repo for app manifests.
+
+GitOps manifests (apps + cluster-internal infra) live in a separate GitHub repo created and bootstrapped by `10-cluster`.
 
 Stack:
 - **Proxmox VE** — hypervisor (one or more physical nodes)
 - **Talos OS** — immutable OS for K8s nodes (no SSH, everything via `talosctl`)
 - **Cilium** — CNI with kube-proxy replacement, Hubble UI, native routing
-- **Flux CD** — GitOps controller, bootstrapped directly via the `fluxcd/flux` Terraform provider
+- **Flux CD** — GitOps controller, bootstrapped via the `fluxcd/flux` Terraform provider
+- **Garage + Zot** — S3 backend + OCI mirror, decoupled and replaceable (any S3 / any OCI registry works the same way)
 
 Networking model — **DHCP + DNS via `dnsmasq` on the Proxmox host**. Hostnames sent in DHCP option 12 land in DNS automatically thanks to `expand-hosts + domain=…`. This lets every Talos `node`/`endpoint` field address nodes by FQDN (e.g. `tls-cp-01.lab.lan`) instead of brittle IPs.
 
-## File layout (after refactor)
+## Repo layout
 
 ```
 .
-├── 00_images.tf               # Talos image download into Proxmox storage
-├── 01_vms.tf                  # CP / worker VMs (for_each over num_*)
-├── 02_talos.tf                # machine_secrets, configs, bootstrap, kubeconfig
-├── 03_cilium.tf               # wait_apiserver + helm_release.cilium
-├── 04_flux.tf                 # github_repository + deploy key + flux_bootstrap_git
-├── providers.tf               # ALL required_providers + provider blocks
-├── variables.tf               # all input variables with defaults
-├── outputs.tf                 # all outputs (kubeconfig, talosconfig, IPs/FQDNs)
-├── credentials.auto.tfvars    # secrets (gitignored)
-├── credentials.auto.tfvars-exemple
-└── helm/
-    └── cilium/
-        └── cilium-values.yaml.tftpl  # values template, cluster.name = var.cluster_name
+├── environments/<env>/
+│   ├── 00-storage/                    # Garage + Zot bootstrap. Local TF state (chicken-and-egg).
+│   │   ├── 00_image.tf … 04_vm.tf
+│   │   ├── cloud-init/cloud-config.yaml.tftpl
+│   │   ├── credentials.auto.tfvars[-exemple]
+│   │   └── README.md
+│   └── 10-cluster/                    # Talos + Cilium + Flux. Remote TF state in 00-storage's Garage.
+│       ├── 00_images.tf … 04_flux.tf
+│       ├── providers.tf variables.tf outputs.tf
+│       ├── helm/cilium/cilium-values.yaml.tftpl
+│       ├── backend.s3.hcl[.example]   # gitignored; .example is the template
+│       ├── credentials.auto.tfvars[-exemple]
+│       └── README.md                  # cluster deep-dive, troubleshooting
+├── modules/                           # reusable modules (Phase 2 — empty for now)
+├── tests/                             # native TF tests (`*.tftest.hcl`)
+├── docs/adr/                          # Architecture Decision Records
+├── .github/workflows/                 # CI (Phase 4)
+├── .claude/                           # agents, slash commands, hooks
+├── .pre-commit-config.yaml .tflint.hcl .editorconfig
+├── Justfile                           # `just <recipe>` — wraps the common terraform flows
+└── README.md CLAUDE.md TODO.md
 ```
 
-The numeric prefix represents the logical reading order, not dependency — Terraform builds the graph itself via `depends_on` and references.
+The numeric prefixes inside a stack (`00_images.tf`, `01_vms.tf`, …) are **just reading order** — Terraform builds the graph from references. Numeric prefixes on **stack directories** (`00-storage`, `10-cluster`), on the other hand, do imply apply order.
 
-## How to deploy
-
-### Prerequisites
-
-1. **Proxmox API token** with `VM.Allocate`, `Datastore.AllocateSpace`, `SDN.Use`.
-2. **dnsmasq on Proxmox** configured with `expand-hosts + domain=<your-domain>` (see README).
-3. **Talos schematic ID** for the desired extensions (qemu-guest-agent is required) — generate at https://factory.talos.dev.
-4. **GitHub Personal Access Token** with `repo` (private repo create + push) and `admin:public_key` (deploy key).
-
-### Commands
+## Apply order (one-time bootstrap)
 
 ```bash
-terraform init -upgrade
-terraform validate
-terraform apply
+# Stack 1: storage. State is local — chmod-protect afterwards.
+just init lab 00-storage
+just apply lab 00-storage
+chmod 600 environments/lab/00-storage/terraform.tfstate*
+
+# Wire 10-cluster's S3 backend at the just-provisioned Garage.
+cp environments/lab/10-cluster/backend.s3.hcl{.example,}
+chmod 600 environments/lab/10-cluster/backend.s3.hcl
+$EDITOR environments/lab/10-cluster/backend.s3.hcl   # access keys from `terraform output -state environments/lab/00-storage/terraform.tfstate`
+
+# Stack 2: cluster.
+just init lab 10-cluster
+just apply lab 10-cluster
+
+just save lab    # kubeconfig + talosconfig → ~/.kube + ~/.talos
+just status      # nodes + cilium + flux
 ```
 
-After a successful apply:
-```bash
-terraform output -raw kubeconfig > ~/.kube/config
-terraform output -raw talosconfig > ~/.talos/config
-```
-
-`local_file` resources also write `./kubeconfig` and `./talosconfig` next to the project — both are in `.gitignore`.
-
-## Solving the "Cilium hangs" failure mode
+## Solving the "Cilium hangs" failure mode (10-cluster)
 
 **Symptom** (in the previous version): right after `talos_machine_bootstrap` Helm tries to install Cilium, gets `connection refused` from the API server, and the cluster gets stuck.
 
@@ -80,15 +90,15 @@ data.talos_cluster_health          # safe now — CNI is up
 flux_bootstrap_git
 ```
 
-No hardcoded timeouts — only real probes. If anything fails, it fails fast with a meaningful error.
+No hardcoded timeouts — only real probes.
 
 ## Known limitations
 
-- **Single-endpoint kubeconfig**: `cluster_endpoint` points at the first CP's FQDN. If that CP physically dies, external `kubectl` cannot connect (etcd quorum inside the cluster keeps working). Full HA needs a Talos VIP — backlogged (requires a reserved IP in the dnsmasq DHCP range).
-- **GitHub repo is created by TF**: if `${github_owner}/${github_repo}` already exists, `terraform apply` fails. Workaround: `terraform import github_repository.flux ${repo_name}` or delete the old repo manually.
-- **State stored locally** (`./terraform.tfstate`). Every secret lives there — Talos machine secrets, kubeconfig, GitHub token, SSH deploy key. Do not commit, do not share. Future plan: move to an S3/MinIO backend.
+- **Single-endpoint kubeconfig**: `cluster_endpoint` points at the first CP's FQDN. If that CP physically dies, external `kubectl` cannot connect (etcd quorum inside the cluster keeps working). Full HA needs a Talos VIP — backlogged (TODO #9).
+- **GitHub repo creation**: if `${github_owner}/${github_repo}` already exists, `apply` fails with 422. Workaround: `terraform import github_repository.flux ${repo_name}` or delete the old repo first.
+- **`00-storage` state is local**: chicken-and-egg — Garage stores state but Garage itself does not exist yet on first apply. Mitigations: chmod 600, periodic backup of `environments/<env>/00-storage/terraform.tfstate*` to NAS / encrypted USB.
 
-## Networking conventions
+## Networking conventions (10-cluster)
 
 - VM name = Talos hostname = DNS name:
   - `tls-cp-XX.${var.dns_domain}` — control plane
@@ -119,19 +129,20 @@ No hardcoded timeouts — only real probes. If anything fails, it fails fast wit
 - **Never** use `element(flatten(ipv4_addresses), N)` — too brittle, qemu-agent returns addresses in unpredictable order. Use FQDN from `var.dns_domain` instead.
 - **Never** rely on `time_sleep` to wait for K8s readiness. Use `null_resource` with a polling provisioner or `helm_release.wait = true`.
 - **Never** hardcode `cluster.name` inside `cilium-values.yaml` — use `templatefile()` with `var.cluster_name`.
-- Secrets live exclusively in `credentials.auto.tfvars` (in `.gitignore`). In code, only `var.*` with `sensitive = true`.
-- **Pre-commit hooks** (`.pre-commit-config.yaml`) gate every commit: gitleaks, `terraform fmt/validate/tflint`, `terraform-docs` (regenerates the *Inputs and outputs* block in `README.md` between `<!-- BEGIN_TF_DOCS -->` markers), plus generic hygiene (trailing-ws, EOF, large-files, private-key, etc.). Edits inside the markers will be overwritten — change `variables.tf` / `outputs.tf` instead. Setup: `brew install pre-commit gitleaks terraform-docs tflint && pre-commit install`.
+- Secrets live exclusively in `credentials.auto.tfvars` per stack (gitignored, `chmod 600`). In code, only `var.*` with `sensitive = true`.
+- **Pre-commit hooks** (`.pre-commit-config.yaml`) gate every commit: gitleaks, `terraform fmt/validate/tflint`, `terraform-docs` (regenerates *Inputs and outputs* between `<!-- BEGIN_TF_DOCS -->` markers in each stack's `README.md`), plus generic hygiene. Edits inside the markers will be overwritten — change `variables.tf`/`outputs.tf` instead. Setup: `brew install pre-commit gitleaks terraform-docs tflint just && pre-commit install`.
+- **Multi-env via copy, not Terraform workspaces.** New env: `cp -a environments/lab environments/staging`, edit tfvars + backend key. Workspaces share configuration but split state — when env-specific patches diverge, that's a footgun.
 
 ## Debugging paths
 
-- If apply fails on `wait_apiserver` — check `talosctl --talosconfig=./talosconfig health` and `talosctl dmesg`.
-- If apply fails on `helm_release.cilium` — `kubectl get pods -n kube-system -l k8s-app=cilium` for status, then `kubectl logs -n kube-system <cilium-pod> -c cilium-agent`.
-- If apply fails on `flux_bootstrap_git` — verify the GitHub token (`gh auth status`) and the deploy key (`gh repo deploy-key list -R ${owner}/${repo}`).
-- Cluster state: `kubectl get nodes -o wide`, `cilium status`, `flux check`, `flux get sources git -A`, `flux get kustomizations -A`.
+- Apply fails on `wait_apiserver` → `talosctl --talosconfig=environments/lab/10-cluster/talosconfig health` and `talosctl dmesg`.
+- Apply fails on `helm_release.cilium` → `kubectl get pods -n kube-system -l k8s-app=cilium`, then `kubectl logs -n kube-system <cilium-pod> -c cilium-agent`.
+- Apply fails on `flux_bootstrap_git` → `gh auth status`, `gh repo deploy-key list -R ${owner}/${repo}`.
+- Cluster state: `just status` (nodes + cilium + flux at a glance).
 
 ## Agent crew and hooks
 
-`.claude/` houses a full multi-agent setup:
+`.claude/` houses a full multi-agent setup. **Agents and slash commands operate on individual stack directories** — pass `cwd` or run from the stack root.
 
 **Agents** (`.claude/agents/`):
 - `terraform-security-auditor` — security review
@@ -143,26 +154,26 @@ No hardcoded timeouts — only real probes. If anything fails, it fails fast wit
 
 **Slash commands** (`.claude/commands/`):
 - `/audit` — 4 auditors in parallel → `.claude/state/last-audit.md`
-- `/fix [scope]` — staff-engineer applies fixes from last-audit (scope = HIGH | HIGH+MEDIUM | all | #1,#3)
-- `/test [mode]` — infra-tester in pre-apply / post-apply / auto mode
-- `/cycle` — `/audit` → `/fix HIGH` → `/test`, single consolidated report
-- `/deploy-prep` — final readiness gate before `terraform apply`: cycle + connectivity (Proxmox API, GitHub PAT, Talos image, DNS)
-- `/post-deploy` — after `terraform apply`: e2e + Flux GitRepository/Kustomization sync + GitOps next steps
+- `/fix [scope]` — staff-engineer applies fixes (scope = HIGH | HIGH+MEDIUM | all | #1,#3)
+- `/test [mode]` — infra-tester in pre-apply / post-apply / auto
+- `/cycle` — `/audit` → `/fix HIGH` → `/test`
+- `/deploy-prep` — final readiness gate before `terraform apply`
+- `/post-deploy` — after `apply`: e2e + Flux sync + GitOps next steps
 
 **Hooks** (`.claude/settings.json`):
-- `SessionStart` → checks credentials.auto.tfvars, presence of `terraform`/`jq`/optional CLIs, infra state (kubeconfig present or not), and prints the slash-command list
-- `PostToolUse` Edit/Write on `*.tf|*.tftpl` → auto `terraform fmt` + `validate`. On error the message is injected into Claude's context via `additionalContext` and Claude fixes it itself
-- `Stop` → if the session edited ≥3 .tf files, prints a soft reminder about `/test` or `/cycle`
+- `SessionStart` → checks `credentials.auto.tfvars`, CLIs (`terraform`/`jq`/`talosctl`), infra state (kubeconfig present or not), prints slash-command list
+- `PostToolUse` Edit/Write on `*.tf|*.tftpl` → auto `terraform fmt -recursive` + `validate` for the stack containing the file
+- `Stop` → if ≥3 `.tf` files were edited, soft reminder about `/test` or `/cycle`
 
 **Intentionally NOT automated:**
 - `terraform apply` / `destroy` — destructive, always manual
-- Auto-running `/audit` after every fix — recursion risk (fix → audit → new findings → fix …)
+- Auto-running `/audit` after every fix — recursion risk
 
 ## What to do after apply
 
 The cluster is empty — only `flux-system` and `kube-system`. Apps are added **via GitOps only**: push manifests into `${github_repo}` under `clusters/${cluster_name}/` (or directories pulled in from there: `apps/`, `infra/`), and Flux applies them.
 
-A typical layout:
+Typical layout in the Flux repo:
 ```
 clusters/${cluster_name}/
   ├── flux-system/         # generated by flux_bootstrap_git

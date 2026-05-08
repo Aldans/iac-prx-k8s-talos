@@ -1,0 +1,328 @@
+#cloud-config
+# Bootstraps a single-node storage host: Garage (S3-compatible storage) + Zot
+# (OCI registry with pull-through mirroring), connected via the local Garage S3 API.
+#
+# Variables interpolated by Terraform (templatefile()):
+#   $${hostname}                — VM hostname
+#   $${fqdn}                    — full DNS name
+#   $${admin_ssh_pubkey}        — SSH key for the 'admin' user
+#   $${garage_version}          — Garage version tag
+#   $${zot_version}             — Zot version tag
+#   $${garage_rpc_secret}       — 64-char hex shared secret for Garage RPC
+#   $${garage_replication_factor} — Garage replication factor
+#   $${garage_access_key_id}    — pre-issued Garage S3 access key id
+#   $${garage_secret_access_key} — pre-issued Garage S3 secret
+#   $${garage_buckets}          — list of bucket names to create
+#   $${garage_oci_bucket}       — bucket Zot uses for blobs
+#   $${zot_cert_pem}            — server cert (PEM)
+#   $${zot_key_pem}             — server key (PEM)
+
+hostname: ${hostname}
+fqdn: ${fqdn}
+manage_etc_hosts: true
+preserve_hostname: false
+
+# Root login is locked. Use the 'admin' user with passwordless sudo for any maintenance.
+disable_root: true
+
+users:
+  - name: admin
+    sudo: ALL=(ALL) NOPASSWD:ALL
+    shell: /bin/bash
+    groups: [adm, sudo]
+    lock_passwd: true
+    ssh_authorized_keys:
+      - ${admin_ssh_pubkey}
+
+  # Dedicated unprivileged user that runs Garage and Zot.
+  # Must exist before write_files-deferred (which uses owner: storage:storage).
+  - name: storage
+    system: true
+    shell: /usr/sbin/nologin
+    homedir: /var/lib/storage
+    create_home: false
+    lock_passwd: true
+
+package_update: true
+package_upgrade: false
+packages:
+  - qemu-guest-agent   # required so Proxmox bpg-provider can read the VM IP
+  - curl
+  - ca-certificates
+  - jq
+  - parted
+  - xfsprogs
+
+# Start qemu-guest-agent as soon as it is installed so the Proxmox host receives
+# the VM IP without waiting for the rest of cloud-init to finish.
+bootcmd:
+  - [ cloud-init-per, once, qga-enable, sh, -c, "systemctl enable --now qemu-guest-agent.service 2>/dev/null || true" ]
+
+write_files:
+  # ----- Pre-format and mount /var/lib/storage on the data disk (vdb) ---------
+  - path: /etc/systemd/system/var-lib-storage.mount
+    permissions: "0644"
+    content: |
+      [Unit]
+      Description=Mount /var/lib/storage on the data disk
+      Before=local-fs.target
+
+      [Mount]
+      What=/dev/disk/by-label/storage
+      Where=/var/lib/storage
+      Type=xfs
+      Options=defaults,noatime
+
+      [Install]
+      WantedBy=local-fs.target
+
+  # ----- Garage configuration --------------------------------------------------
+  - path: /etc/garage.toml
+    permissions: "0640"
+    owner: storage:storage
+    defer: true
+    content: |
+      metadata_dir = "/var/lib/storage/garage/meta"
+      data_dir     = "/var/lib/storage/garage/data"
+      db_engine    = "sqlite"
+      replication_factor = ${garage_replication_factor}
+      rpc_bind_addr = "[::]:3901"
+      rpc_public_addr = "${fqdn}:3901"
+      rpc_secret = "${garage_rpc_secret}"
+
+      [s3_api]
+      api_bind_addr = "[::]:3900"
+      s3_region = "garage"
+      root_domain = ".s3.${fqdn}"
+
+      [s3_web]
+      bind_addr = "[::]:3902"
+      root_domain = ".web.${fqdn}"
+      index = "index.html"
+
+      [admin]
+      api_bind_addr = "[::]:3903"
+      admin_token = "${garage_rpc_secret}"
+      metrics_token = "${garage_rpc_secret}"
+
+  # ----- Garage systemd unit ---------------------------------------------------
+  - path: /etc/systemd/system/garage.service
+    permissions: "0644"
+    content: |
+      [Unit]
+      Description=Garage object storage
+      After=network-online.target var-lib-storage.mount
+      Requires=var-lib-storage.mount
+      Wants=network-online.target
+
+      [Service]
+      Type=simple
+      User=storage
+      Group=storage
+      EnvironmentFile=-/etc/default/garage
+      ExecStart=/usr/local/bin/garage server
+      Restart=on-failure
+      RestartSec=5
+      LimitNOFILE=65536
+      AmbientCapabilities=
+      ProtectSystem=strict
+      ProtectHome=true
+      ReadWritePaths=/var/lib/storage/garage
+      PrivateTmp=true
+      NoNewPrivileges=true
+
+      [Install]
+      WantedBy=multi-user.target
+
+  # ----- Garage init / bootstrap script (idempotent) ---------------------------
+  - path: /usr/local/bin/garage-init.sh
+    permissions: "0755"
+    content: |
+      #!/usr/bin/env bash
+      # Wait for Garage, run layout assignment if not done yet, create buckets,
+      # import the pre-issued access key, grant it permissions on every bucket.
+      #
+      # NOTE: do NOT export GARAGE_RPC_HOST — Garage v1.0+ requires the
+      # <node_id>@host:port format and the CLI auto-discovers the local node
+      # via /etc/garage.toml when no env var is set.
+      set -euo pipefail
+
+      # Wait until Garage answers locally.
+      for _ in $(seq 1 60); do
+        if /usr/local/bin/garage status >/dev/null 2>&1; then break; fi
+        sleep 2
+      done
+
+      # Layout — only on the first run. The marker is "Current cluster layout
+      # version: N" with N >= 1 (a fresh cluster sits at version 0).
+      LAYOUT_VER=$(/usr/local/bin/garage layout show 2>/dev/null | awk -F': ' '/Current cluster layout version:/ { print $2 + 0; exit }')
+      LAYOUT_VER=$${LAYOUT_VER:-0}
+      if [ "$LAYOUT_VER" = "0" ]; then
+        # `garage status` prints the 16-char short ID at the start of a data row.
+        NODE_ID=$(/usr/local/bin/garage status 2>&1 | grep -oE '^[0-9a-f]{16}' | head -1)
+        if [ -n "$NODE_ID" ]; then
+          /usr/local/bin/garage layout assign "$NODE_ID" -z dc1 -c 100G
+          /usr/local/bin/garage layout apply --version 1
+        else
+          echo "[garage-init] WARN: could not extract node id; skipping layout assign"
+        fi
+      fi
+
+      # Buckets
+      for b in ${join(" ", garage_buckets)}; do
+        /usr/local/bin/garage bucket create "$b" 2>/dev/null || true
+      done
+
+      # Import the pre-issued access key (skip if it already exists). Garage
+      # v1.0.1 expects positional args `<key_id> <secret>` and does not accept
+      # `--name` on import, so we rename in a separate step.
+      if ! /usr/local/bin/garage key list 2>/dev/null | grep -q "${garage_access_key_id}"; then
+        /usr/local/bin/garage key import --yes ${garage_access_key_id} ${garage_secret_access_key}
+        /usr/local/bin/garage key rename ${garage_access_key_id} terraform 2>/dev/null || true
+      fi
+
+      # Grant the key full perms on every bucket
+      for b in ${join(" ", garage_buckets)}; do
+        /usr/local/bin/garage bucket allow --read --write --owner "$b" --key terraform 2>/dev/null || true
+      done
+
+      echo "[garage-init] done"
+
+  # ----- Zot configuration -----------------------------------------------------
+  # Storage uses the local Garage via the S3 driver.
+  # Sync block enables on-demand pull-through mirroring of the listed registries.
+  - path: /etc/zot/config.json
+    permissions: "0640"
+    owner: storage:storage
+    defer: true
+    content: |
+      {
+        "distSpecVersion": "1.1.1",
+        "storage": {
+          "rootDirectory": "/var/lib/storage/zot",
+          "remoteCache": false,
+          "storageDriver": {
+            "name": "s3",
+            "rootdirectory": "/zot",
+            "region": "garage",
+            "regionendpoint": "http://127.0.0.1:3900",
+            "bucket": "${garage_oci_bucket}",
+            "secure": false,
+            "skipverify": true,
+            "forcepathstyle": true,
+            "accesskey": "${garage_access_key_id}",
+            "secretkey": "${garage_secret_access_key}"
+          }
+        },
+        "http": {
+          "address": "0.0.0.0",
+          "port": "5000",
+          "compat": ["docker2s2"],
+          "tls": {
+            "cert": "/etc/zot/tls/cert.pem",
+            "key": "/etc/zot/tls/key.pem"
+          }
+        },
+        "log": {
+          "level": "info"
+        },
+        "extensions": {
+          "sync": {
+            "enable": true,
+            "downloadDir": "/var/lib/storage/zot-sync-tmp",
+            "registries": [
+              { "urls": ["https://ghcr.io"],              "onDemand": true, "tlsVerify": true, "preserveDigest": true, "syncTimeout": "10m", "maxRetries": 3, "retryDelay": "5m", "content": [{"prefix": "**"}] },
+              { "urls": ["https://registry-1.docker.io"], "onDemand": true, "tlsVerify": true, "preserveDigest": true, "syncTimeout": "10m", "maxRetries": 3, "retryDelay": "5m", "content": [{"prefix": "**"}] },
+              { "urls": ["https://registry.k8s.io"],      "onDemand": true, "tlsVerify": true, "preserveDigest": true, "syncTimeout": "10m", "maxRetries": 3, "retryDelay": "5m", "content": [{"prefix": "**"}] },
+              { "urls": ["https://quay.io"],              "onDemand": true, "tlsVerify": true, "preserveDigest": true, "syncTimeout": "10m", "maxRetries": 3, "retryDelay": "5m", "content": [{"prefix": "**"}] }
+            ]
+          }
+        }
+      }
+
+  # ----- Zot TLS files ---------------------------------------------------------
+  - path: /etc/zot/tls/cert.pem
+    permissions: "0644"
+    owner: storage:storage
+    defer: true
+    content: |
+      ${indent(6, zot_cert_pem)}
+
+  - path: /etc/zot/tls/key.pem
+    permissions: "0600"
+    owner: storage:storage
+    defer: true
+    content: |
+      ${indent(6, zot_key_pem)}
+
+  # ----- Zot systemd unit ------------------------------------------------------
+  - path: /etc/systemd/system/zot.service
+    permissions: "0644"
+    content: |
+      [Unit]
+      Description=Zot OCI registry
+      After=network-online.target garage.service
+      Wants=network-online.target garage.service
+
+      [Service]
+      Type=simple
+      User=storage
+      Group=storage
+      ExecStart=/usr/local/bin/zot serve /etc/zot/config.json
+      Restart=on-failure
+      RestartSec=5
+      LimitNOFILE=65536
+      ProtectSystem=strict
+      ProtectHome=true
+      ReadWritePaths=/var/lib/storage/zot /var/lib/storage/zot-sync-tmp
+      PrivateTmp=true
+      NoNewPrivileges=true
+
+      [Install]
+      WantedBy=multi-user.target
+
+runcmd:
+  # 0. Make sure qemu-guest-agent is up so the Proxmox host gets the VM IP early.
+  - systemctl enable --now qemu-guest-agent.service
+
+  # 1. Directories (the storage user is created via the `users:` block above)
+  - install -d -o storage -g storage -m 0755 /etc/zot /etc/zot/tls
+
+  # 2. Format and mount the data disk on /var/lib/storage
+  - |
+    set -e
+    if [ -b /dev/vdb ] && ! blkid -L storage >/dev/null 2>&1; then
+      parted -s /dev/vdb mklabel gpt
+      parted -s /dev/vdb mkpart primary xfs 0% 100%
+      sleep 1
+      mkfs.xfs -L storage /dev/vdb1
+    fi
+  - install -d -o storage -g storage -m 0755 /var/lib/storage
+  - systemctl daemon-reload
+  - systemctl enable --now var-lib-storage.mount
+  - install -d -o storage -g storage -m 0755 /var/lib/storage/garage /var/lib/storage/zot /var/lib/storage/garage/meta /var/lib/storage/garage/data /var/lib/storage/zot-sync-tmp
+
+  # 3. Install Garage
+  - curl -fsSL "https://garagehq.deuxfleurs.fr/_releases/${garage_version}/x86_64-unknown-linux-musl/garage" -o /usr/local/bin/garage
+  - chmod +x /usr/local/bin/garage
+
+  # 4. Install Zot — full binary (NOT -minimal). The minimal release strips all
+  # extensions including `sync`, which makes onDemand pull-through silently fail
+  # (config accepts, but the extension is a stub).
+  - curl -fsSL "https://github.com/project-zot/zot/releases/download/${zot_version}/zot-linux-amd64" -o /usr/local/bin/zot
+  - chmod +x /usr/local/bin/zot
+
+  # 5. Permissions on config files (defer:true wrote them, but ownership might lag)
+  - chown -R storage:storage /etc/zot
+  - chmod 0640 /etc/garage.toml /etc/zot/config.json
+  - chmod 0644 /etc/zot/tls/cert.pem
+  - chmod 0600 /etc/zot/tls/key.pem
+  - chown storage:storage /etc/garage.toml
+
+  # 6. Start Garage, run init, then start Zot
+  - systemctl daemon-reload
+  - systemctl enable --now garage.service
+  - /usr/local/bin/garage-init.sh
+  - systemctl enable --now zot.service
+
+final_message: "Storage host ${fqdn} ready. Garage S3 :3900, Zot OCI :5000."
