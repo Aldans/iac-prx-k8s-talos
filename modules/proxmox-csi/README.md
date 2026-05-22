@@ -7,12 +7,28 @@ and the **Proxmox CSI plugin** need:
 1. Namespace `csi-proxmox`, labelled `pod-security.kubernetes.io/enforce=privileged`
    — the CSI node plugin is a privileged DaemonSet (it host-mounts into the
    kubelet plugin directory).
-2. A `Secret` carrying `config.yaml` — one Proxmox API connection block, shared
-   verbatim by the CCM and the CSI plugin.
+2. The `config.yaml` `Secret` — one Proxmox API connection block — created in
+   **two namespaces**: `csi-proxmox` (read by the CSI plugin) and `kube-system`
+   (read by the CCM). Identical content in both.
 
 The in-cluster workloads (CCM + CSI HelmReleases, StorageClass) are owned by
 Flux — see `home-lab-flux/infrastructure/controllers/proxmox-ccm/` and
 `proxmox-csi/`. Same TF/Flux split as `modules/cloudflare-tunnel`.
+
+## Why the Secret is duplicated into `kube-system`
+
+The CCM HelmRelease runs in **`kube-system`**, not `csi-proxmox`. The
+`proxmox-cloud-controller-manager` chart is not namespace-agnostic: the CCM
+authenticates as the ServiceAccount `proxmox-cloud-controller-manager` that the
+chart creates **in `kube-system`** (it generates the CCM's kubeconfig from that
+SA), while the `ClusterRoleBinding` is bound to the same-named SA in the release
+namespace. Deploy the release anywhere else and identity and RBAC diverge — the
+CCM gets `nodes ... is forbidden` and never stamps `providerID`.
+
+So the CCM release lives in `kube-system` (where the chart is consistent) and
+`existingConfigSecret` resolves there — hence the module writes the config
+Secret into `kube-system` as well as `csi-proxmox`. The CSI release stays in
+`csi-proxmox`.
 
 ## Why a CCM is mandatory (not optional)
 
@@ -119,7 +135,7 @@ No modules.
 | ---- | ----------- | ---- | ------- | :------: |
 | <a name="input_config_secret_name"></a> [config\_secret\_name](#input\_config\_secret\_name) | Name of the Secret that carries config.yaml. Referenced verbatim as `existingConfigSecret` by both the CCM and CSI HelmReleases. | `string` | `"proxmox-cloud-config"` | no |
 | <a name="input_create_namespace"></a> [create\_namespace](#input\_create\_namespace) | When true the module creates the namespace itself (labelled pod-security=privileged — the CSI node DaemonSet is a privileged pod). Keep true so the Secret can land before Flux first-reconciles the HelmReleases. Flux must NOT also manage this namespace, or ownership conflicts. | `bool` | `true` | no |
-| <a name="input_kubernetes_namespace"></a> [kubernetes\_namespace](#input\_kubernetes\_namespace) | Namespace holding the shared Proxmox config Secret. Both the CCM and CSI HelmReleases (managed by Flux) must run in this namespace so their `existingConfigSecret` reference resolves. | `string` | `"csi-proxmox"` | no |
+| <a name="input_kubernetes_namespace"></a> [kubernetes\_namespace](#input\_kubernetes\_namespace) | Namespace for the CSI plugin. The module creates it and writes the shared Proxmox config Secret here (the CSI HelmRelease runs in it). The same Secret is also written to `kube-system`, where the CCM HelmRelease runs. | `string` | `"csi-proxmox"` | no |
 | <a name="input_proxmox_endpoint"></a> [proxmox\_endpoint](#input\_proxmox\_endpoint) | Proxmox API endpoint, including scheme and the /api2/json suffix — e.g. https://proxmox.lab.lan:8006/api2/json. Same value as the bpg/proxmox provider's `endpoint`. | `string` | n/a | yes |
 | <a name="input_proxmox_insecure"></a> [proxmox\_insecure](#input\_proxmox\_insecure) | Skip TLS verification when CCM/CSI talk to the Proxmox API. Proxmox VE ships a self-signed certificate by default, so this is normally true for a home lab. | `bool` | `true` | no |
 | <a name="input_proxmox_region"></a> [proxmox\_region](#input\_proxmox\_region) | Region name written into the shared config.yaml. CCM stamps each node's<br/>`spec.providerID` as `proxmox://<region>/<vmid>` and the matching<br/>`topology.kubernetes.io/region` label; the CSI plugin parses the region<br/>back out of providerID to pick the right Proxmox cluster entry. Set this<br/>to the Kubernetes cluster name so the two stay in lock-step. | `string` | n/a | yes |
@@ -130,6 +146,6 @@ No modules.
 
 | Name | Description |
 | ---- | ----------- |
-| <a name="output_config_secret_name"></a> [config\_secret\_name](#output\_config\_secret\_name) | Name of the Secret carrying config.yaml — wire it into the `existingConfigSecret` value of both the CCM and CSI HelmReleases. |
+| <a name="output_config_secret_name"></a> [config\_secret\_name](#output\_config\_secret\_name) | Name of the config.yaml Secret — identical in every namespace it is created in (csi-proxmox, kube-system). Wire it into the `existingConfigSecret` value of both the CCM and CSI HelmReleases. |
 | <a name="output_namespace"></a> [namespace](#output\_namespace) | Namespace holding the shared Proxmox config Secret. The CCM and CSI HelmReleases (Flux) must be deployed here. |
 <!-- END_TF_DOCS -->

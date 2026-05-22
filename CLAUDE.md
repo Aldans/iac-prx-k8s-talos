@@ -105,8 +105,8 @@ No hardcoded timeouts — only real probes.
 
 In-cluster persistent storage is provided by the **Proxmox CSI plugin**, which needs the **Proxmox Cloud Controller Manager (CCM)** to first stamp `spec.providerID` onto every node — Talos' kubelet does not. Split across the usual TF/Flux seam:
 
-- **Terraform** — `modules/proxmox-csi` creates namespace `csi-proxmox` + the shared Proxmox API `Secret`; `modules/talos-cluster` runs the kubelet with `--cloud-provider=external` (`external_cloud_provider = true`).
-- **Flux** — `infrastructure/controllers/proxmox-ccm/` and `proxmox-csi/` hold the HelmReleases; the latter also defines the default `proxmox-zfs` StorageClass. CCM reconciles before CSI (HelmRelease `dependsOn`).
+- **Terraform** — `modules/proxmox-csi` creates namespace `csi-proxmox` + the shared Proxmox API `Secret` (written into both `csi-proxmox` and `kube-system`); `modules/talos-cluster` runs the kubelet with `--cloud-provider=external` (`external_cloud_provider = true`).
+- **Flux** — `infrastructure/controllers/proxmox-ccm/` and `proxmox-csi/` hold the HelmReleases; the latter also defines the default `proxmox-zfs` StorageClass. The CCM HelmRelease runs in `kube-system` (its chart is only namespace-consistent there); the CSI release runs in `csi-proxmox`. CCM reconciles before CSI (HelmRelease `dependsOn`).
 
 Toggling `external_cloud_provider` rolls a new machineconfig to every node (kubelet restart) — do it in a maintenance window. See `modules/proxmox-csi/README.md`.
 

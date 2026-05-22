@@ -65,7 +65,7 @@ variable "proxmox_region" {
 
 variable "kubernetes_namespace" {
   type        = string
-  description = "Namespace holding the shared Proxmox config Secret. Both the CCM and CSI HelmReleases (managed by Flux) must run in this namespace so their `existingConfigSecret` reference resolves."
+  description = "Namespace for the CSI plugin. The module creates it and writes the shared Proxmox config Secret here (the CSI HelmRelease runs in it). The same Secret is also written to `kube-system`, where the CCM HelmRelease runs."
   default     = "csi-proxmox"
 }
 

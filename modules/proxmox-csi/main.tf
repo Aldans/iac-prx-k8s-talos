@@ -7,8 +7,13 @@
 # What lives here:
 #   1. Namespace `csi-proxmox`, labelled pod-security=privileged — the CSI node
 #      plugin is a privileged DaemonSet (host mounts into the kubelet plugin dir).
-#   2. A Secret holding config.yaml — the Proxmox API connection block shared by
-#      BOTH the Cloud Controller Manager and the CSI plugin.
+#   2. The config.yaml Secret — the Proxmox API connection block — created in
+#      TWO namespaces: `csi-proxmox` (read by the CSI plugin) and `kube-system`
+#      (read by the CCM). The CCM's Helm chart is not namespace-agnostic: it
+#      authenticates as the SA `proxmox-cloud-controller-manager` in kube-system
+#      (the chart creates the SA there and generates its kubeconfig from it), so
+#      the CCM HelmRelease must run in kube-system — and `existingConfigSecret`
+#      resolves within the release namespace.
 #
 # The HelmReleases reference this Secret through their `existingConfigSecret`
 # value — see home-lab-flux/infrastructure/controllers/proxmox-{ccm,csi}/.
@@ -28,6 +33,10 @@ locals {
       }
     ]
   })
+
+  # The config Secret is needed in both the CSI namespace and kube-system (CCM).
+  # kube-system always exists — only var.kubernetes_namespace is created below.
+  secret_namespaces = toset([var.kubernetes_namespace, "kube-system"])
 }
 
 resource "kubernetes_namespace" "this" {
@@ -46,12 +55,15 @@ resource "kubernetes_namespace" "this" {
   }
 }
 
-# Shared Proxmox API config. Mounted by the CCM container at its configFile path
-# and by the CSI controller at /etc/proxmox/config.yaml.
+# Shared Proxmox API config. One Secret per namespace in local.secret_namespaces:
+# the CSI controller reads it at /etc/proxmox/config.yaml in csi-proxmox; the CCM
+# reads its copy in kube-system.
 resource "kubernetes_secret" "proxmox_config" {
+  for_each = local.secret_namespaces
+
   metadata {
     name      = var.config_secret_name
-    namespace = var.kubernetes_namespace
+    namespace = each.key
     labels = {
       "app.kubernetes.io/name"       = "proxmox-csi"
       "app.kubernetes.io/managed-by" = "terraform"
@@ -65,4 +77,12 @@ resource "kubernetes_secret" "proxmox_config" {
   }
 
   depends_on = [kubernetes_namespace.this]
+}
+
+# The Secret was single-instance before Fix A; map the existing state entry onto
+# the csi-proxmox key so the for_each move is in-place, not destroy+create.
+# Literal key — var.kubernetes_namespace defaults to (and is deployed as) csi-proxmox.
+moved {
+  from = kubernetes_secret.proxmox_config
+  to   = kubernetes_secret.proxmox_config["csi-proxmox"]
 }
