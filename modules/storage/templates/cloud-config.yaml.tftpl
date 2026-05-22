@@ -191,6 +191,11 @@ write_files:
   # ----- Zot configuration -----------------------------------------------------
   # Storage uses the local Garage via the S3 driver.
   # Sync block enables on-demand pull-through mirroring of the listed registries.
+  # dedupe:false is deliberate — Zot's S3 dedup writes 0-byte placeholder objects
+  # plus a cache.db pointer to one canonical full copy; if that copy is lost
+  # (GC / cache desync) every reference silently serves Content-Length:0 and breaks
+  # image pulls. Unfixed upstream (project-zot/zot#2625). Disabling dedup stores
+  # every blob in full — no placeholders, no corruption. Storage cost is marginal.
   - path: /etc/zot/config.json
     permissions: "0640"
     owner: storage:storage
@@ -201,6 +206,7 @@ write_files:
         "storage": {
           "rootDirectory": "/var/lib/storage/zot",
           "remoteCache": false,
+          "dedupe": false,
           "storageDriver": {
             "name": "s3",
             "rootdirectory": "/zot",

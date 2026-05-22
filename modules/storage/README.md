@@ -87,6 +87,16 @@ module "storage" {
 }
 ```
 
+## Zot deduplication is disabled (`dedupe: false`)
+
+The Zot config in `templates/cloud-config.yaml.tftpl` sets `storage.dedupe: false` — **this is deliberate, do not re-enable it.**
+
+With dedup on, Zot's S3 storage driver does not copy bytes for a duplicate blob: it writes a **0-byte placeholder object** at each per-repo path and relies on the local `cache.db` to point every placeholder at one canonical full copy. Zot's read path (`checkCacheBlob` → `originalBlobInfo`) only checks the canonical *exists* — it never checks its size. If that canonical copy is lost (GC / cache desync), every reference silently serves `Content-Length: 0`, and image pulls fail with `short read ... unexpected EOF`. This is unfixed upstream — see [project-zot/zot#2625](https://github.com/project-zot/zot/issues/2625).
+
+This actually bit the lab on 2026-05-22 (a shared `registry.k8s.io/sig-storage` layer stored as 0 bytes, breaking all CSI plugin image pulls). With `dedupe: false` every blob is stored in full — no placeholders, no cache.db dependency on the read path. The only cost is marginal extra S3 storage, negligible for a home-lab pull-through cache.
+
+**Applying a change to this setting on a running storage VM:** cloud-init runs only once, at VM creation — editing the template does **not** re-push the config. `terraform apply` on `00-storage` would see the changed `user_data` and may try to **recreate the VM** (which hosts Garage — the cluster stack's Terraform state backend). To change Zot config on the live VM, edit `/etc/zot/config.json` by hand and restart Zot; the template change only takes effect on a from-scratch rebuild.
+
 <!-- BEGIN_TF_DOCS -->
 ## Requirements
 
