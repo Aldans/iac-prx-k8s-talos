@@ -66,3 +66,28 @@ output "flux_path" {
   description = "Path inside the repository that Flux watches."
   value       = module.flux_bootstrap.flux_path
 }
+
+###############################################################################
+# Cloudflare Tunnel
+###############################################################################
+
+output "cloudflare_tunnel_id" {
+  description = "UUID of the Cloudflare Tunnel — same value the cloudflared Deployment reads via the TUNNEL_ID ConfigMap."
+  value       = module.cloudflare_tunnel.tunnel_id
+}
+
+output "cloudflare_tunnel_cname_target" {
+  description = "Tunnel CNAME target (<tunnel-id>.cfargotunnel.com). Point extra DNS records here to route additional zones into the tunnel."
+  value       = module.cloudflare_tunnel.tunnel_cname_target
+}
+
+output "public_apps" {
+  description = "FQDN → CF Access status map for all apps exposed via the tunnel."
+  value = {
+    hubble = {
+      fqdn   = module.app_hubble.fqdn
+      access = module.app_hubble.access_enabled
+    }
+  }
+}
+

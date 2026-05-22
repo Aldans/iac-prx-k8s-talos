@@ -9,6 +9,90 @@ Based on the post-deploy review (2026-05-07).
 > navigation; per-stack READMEs hold the deep-dive. Justfile + `.editorconfig`
 > added. Phase 2 (extract `modules/*`) is TODO #6 below.
 
+> **2026-05-10 — Cloudflare Tunnel baseline ✅** Added `cloudflared` Deployment
+> in `home-lab-flux/infrastructure/controllers/cloudflared/`. Named-tunnel
+> mode (token-based, routes managed in CF Zero Trust dashboard). 2 replicas,
+> read-only rootfs, non-root, metrics on :2000. Tunnel token is the only
+> manual step — `kubectl create secret`, NOT in git. Migrate to locally-
+> managed config (config.yaml + credentials.json) once sealed-secrets lands
+> (TODO #7-followup). Closes the "no public IP" gap for the home lab.
+
+> **2026-05-17 — Hubble UI publicly exposed end-to-end ✅** First app live:
+> `https://hubble.dvlab.top` — TLS via Universal SSL `*.dvlab.top`, CF Access
+> with email-OTP (`seopakc.05@gmail.com`), cloudflared HTTPS-upstream to
+> Cilium Gateway, in-cluster HTTPRoute `apps/base/hubble-ui` serves the
+> request unchanged. Two follow-up fixes during testing:
+>
+> 1. **cloudflared was hitting the http listener (:80)** while HTTPRoutes
+>    attach only to the https section → 404. Fixed by switching the route
+>    `service` to `https://cilium-gateway-lab.gateway.svc.cluster.local:443`
+>    with `noTLSVerify: true` + `originServerName` for SNI.
+> 2. **cloudflared does NOT auto-reload `config.yaml`** — needs `kubectl
+>    rollout restart deployment cloudflared`. Earlier README/comment claim
+>    about inotify-reload was wrong; corrected in Flux PR #7.
+
+> **2026-05-14 — TLS reality check + single-level hostnames ✅** Per-app
+> records on the *two-level* depth (`<app>.apps.<zone>`) still failed TLS
+> handshake — `ERR_SSL_VERSION_OR_CIPHER_MISMATCH`. Root cause: Free Universal
+> SSL covers `<zone>` + `*.<zone>` only, NOT hostname-specific certs at
+> deeper levels. Auto-issuance for arbitrary depth needs **Total TLS** (lives
+> inside paid ACM, ~$10/mo). Cert-manager in-cluster does NOT help — browser
+> talks to CF edge first, so the edge cert is what matters.
+>
+> Decision: stay on Free plan, move apps to single-level `<app>.<public_domain>`
+> (covered by Universal SSL's `*.dvlab.top`). Changed default of
+> `var.public_subdomain` from `"apps"` to `""`. Migrated hubble:
+> `hubble.apps.dvlab.top` → `hubble.dvlab.top` (1 destroy + 1 add on DNS,
+> 1 update in-place on Access app).
+>
+> `cloudflare_total_tls` resource removed from `modules/cloudflare-tunnel/`
+> (file `tls.tf` kept as a documented stub for future paid-plan re-enable).
+> Flux PR #5 updated cloudflared routing table. `originRequest.httpHostHeader`
+> still rewrites to `hubble.apps.lab.lan` — internal Gateway routing
+> untouched, only the public-side hostname changed.
+
+> **2026-05-14 — Per-app public pattern ✅** Tested the wildcard CNAME end-to-
+> end: TLS handshake failed because Free Universal SSL covers only one
+> wildcard level (`*.dvlab.top`), not two-level (`*.apps.dvlab.top`). Switched
+> to per-app DNS records:
+> - New module `modules/cloudflare-public-app/` — creates one CNAME per app +
+>   optional `cloudflare_zero_trust_access_application` (SSO gate via CF
+>   Access; allow-by-email / allow-by-domain).
+> - Wildcard `*.apps` CNAME destroyed via `terraform apply` (1 destroy, 0 add).
+> - `public_subdomain` variable moved from `cloudflare-tunnel` module to
+>   `10-cluster` root — `cloudflare-tunnel` is now purely tunnel-side.
+> - `cloudflare-tunnel` keeps `data.cloudflare_zone` (exposes `zone_id`) so
+>   downstream `cloudflare-public-app` instances reuse it.
+> - Adding a public app is now two steps: `module "app_xxx" { ... }` in
+>   `10-cluster/cloudflare.tf` (`terraform apply`) + ingress rule in
+>   `home-lab-flux/.../cloudflared/configmap.yaml` (`git push`).
+>
+> Alternative paths still on the table if per-app records become annoying at
+> scale: paid Advanced Certificate ($10/mo, wildcard works), Total TLS, or
+> origin TLS via cert-manager DNS-01.
+
+> **2026-05-14 — Cloudflare Tunnel — full IaC ✅** Promoted the baseline to a
+> proper two-layer setup:
+> - **Terraform** (`modules/cloudflare-tunnel/` + `environments/lab/10-cluster/cloudflare.tf`):
+>   provisions the CF Tunnel (`config_src=local`), the wildcard CNAME
+>   `*.apps.dvlab.top`, and writes `cloudflared-credentials` Secret +
+>   `cloudflared-tunnel-id` ConfigMap into the cluster.
+> - **Flux** (`infrastructure/controllers/cloudflared/configmap.yaml`):
+>   `config.yaml` holds the route table (pure GitOps). The Deployment runs
+>   `cloudflared tunnel run $(TUNNEL_ID)`, where `TUNNEL_ID` comes from the
+>   TF-managed ConfigMap via `envFrom`. This decouples routes (Flux) from
+>   tunnel identity (TF).
+> - Renamed `claudeflare_*` → `cloudflare_*` in `credentials.auto.tfvars`.
+>   Added `cloudflare/cloudflare ~> 5.0` and `hashicorp/random ~> 3.6`
+>   providers to `10-cluster/providers.tf`.
+> - Side-fix: `provider "kubernetes"` in `10-cluster/providers.tf` referenced
+>   the moved `local_file.kubeconfig` (pre-existing dangling ref from the
+>   Phase-2 module split); switched to `module.talos_cluster.kubeconfig_path`
+>   to match `provider "helm"`. `terraform validate` now passes.
+> - Catch-all `http_status:404` is the only default route — adding public
+>   apps = PR to `configmap.yaml`. See `cloudflared/README.md` for the
+>   `httpHostHeader`-rewrite vs second-Gateway-listener trade-off.
+
 > **2026-05-08 — Cilium ConfigMap-only upgrade gotcha ✅ RESOLVED.** Original
 > issue: `terraform apply` that flips Cilium feature flags updates
 > `cilium-config` ConfigMap but the chart does not stamp a checksum on the

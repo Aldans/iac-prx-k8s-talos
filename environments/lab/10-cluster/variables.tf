@@ -271,3 +271,59 @@ variable "flux_path" {
   description = "Path inside the Git repo that Flux watches. Defaults to clusters/<cluster_name> when null."
   default     = null
 }
+
+###############################################################################
+# Cloudflare (public tunnel)
+###############################################################################
+
+variable "cloudflare_api_token" {
+  type        = string
+  sensitive   = true
+  description = <<-EOT
+    Cloudflare API token. Required scopes:
+      - Account › Cloudflare Tunnel › Edit
+      - Zone › DNS › Edit (limited to the public domain's zone)
+      - Zone › Zone › Read (limited to the public domain's zone)
+    Create at: Cloudflare dashboard → My Profile → API Tokens → Custom Token.
+  EOT
+}
+
+variable "cloudflare_account_id" {
+  type        = string
+  description = "Cloudflare account ID — find it in the right sidebar of the Cloudflare dashboard."
+
+  validation {
+    condition     = can(regex("^[a-f0-9]{32}$", var.cloudflare_account_id))
+    error_message = "cloudflare_account_id: 32 hex characters."
+  }
+}
+
+variable "public_domain" {
+  type        = string
+  description = "Public Cloudflare-managed zone. App hostnames are exposed under <app>.<public_subdomain>.<public_domain>."
+}
+
+variable "public_subdomain" {
+  type        = string
+  description = <<-EOT
+    Optional subdomain level between app names and the public domain. Empty
+    string (default) places apps at `<app>.<public_domain>` so they fall under
+    Universal SSL's single-level wildcard (`*.<zone>`) — required on Free plan.
+
+    Setting a non-empty value (e.g. "apps") yields `<app>.apps.<public_domain>`
+    — DNS works but TLS handshake fails on Free plan because Universal SSL does
+    not cover two-level wildcards. To use a non-empty value, enable Cloudflare
+    ACM / Total TLS or buy an Advanced Certificate Pack (both ~$10/mo).
+  EOT
+  default     = ""
+}
+
+variable "admin_emails" {
+  type        = list(string)
+  description = "Email addresses allowed through Cloudflare Access on admin-tier apps (Hubble UI, Grafana, etc.). Each email must be registered as a login identity on the CF Zero Trust dashboard side (One-Time PIN works out of the box — CF sends a code at login time, no pre-registration needed)."
+
+  validation {
+    condition     = length(var.admin_emails) > 0
+    error_message = "admin_emails must contain at least one address — otherwise Access policies deny everyone."
+  }
+}

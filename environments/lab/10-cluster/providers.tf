@@ -44,6 +44,14 @@ terraform {
       source  = "hashicorp/null"
       version = "~> 3.2"
     }
+    cloudflare = {
+      source  = "cloudflare/cloudflare"
+      version = "~> 5.0"
+    }
+    random = {
+      source  = "hashicorp/random"
+      version = "~> 3.6"
+    }
   }
 }
 
@@ -59,7 +67,7 @@ provider "proxmox" {
 }
 
 provider "kubernetes" {
-  config_path = local_file.kubeconfig.filename
+  config_path = module.talos_cluster.kubeconfig_path
 }
 
 provider "helm" {
@@ -85,4 +93,8 @@ provider "flux" {
       private_key = module.flux_bootstrap.private_key_pem
     }
   }
+}
+
+provider "cloudflare" {
+  api_token = var.cloudflare_api_token
 }
