@@ -11,7 +11,7 @@ locals {
 }
 
 resource "proxmox_virtual_environment_vm" "talos_cp" {
-  for_each = { for i, n in local.cp_node_names : n => i }
+  for_each = toset(local.cp_node_names)
 
   name        = each.key
   description = "Talos control-plane, managed by Terraform"
@@ -71,7 +71,7 @@ resource "proxmox_virtual_environment_vm" "talos_cp" {
 
 # Worker — same logic as cp, just different resources. See the disk[0].file_id comment above.
 resource "proxmox_virtual_environment_vm" "talos_worker" {
-  for_each = { for i, n in local.worker_node_names : n => i }
+  for_each = toset(local.worker_node_names)
 
   # No explicit depends_on — Proxmox creates CP and worker VMs in parallel, which speeds up apply.
 

@@ -57,6 +57,22 @@ The Talos provider auto-configures from `talos_machine_secrets.this` — no expl
 - Control-plane endpoint baked into kubeconfig and certs: `https://<first-cp>.<dns_domain>:6443`. Single-CP failure mode: external `kubectl` cannot connect (etcd quorum keeps working internally). Full HA needs a Talos VIP — backlogged.
 - `talos_cert_sans` contains all CP/worker FQDNs **and** their initial DHCP IPs, so `talosctl` can connect to either form without x509 errors.
 
+## External cloud provider
+
+`external_cloud_provider = true` patches the machineconfig of every node with
+`machine.kubelet.extraArgs: { cloud-provider: external }`. This is required by
+an out-of-tree cloud-controller-manager — in this repo, the Proxmox CCM (see
+`modules/proxmox-csi`), which the Proxmox CSI plugin depends on for node
+`providerID`.
+
+With the flag on, each kubelet applies the
+`node.cloudprovider.kubernetes.io/uninitialized:NoSchedule` taint at boot; the
+CCM clears it once the node is initialized. Leave the flag `false` for any
+cluster without an external CCM, or the nodes stay tainted forever.
+
+Flipping the flag rolls a new machineconfig to every node (brief kubelet
+restart / node re-register) — apply it in a maintenance window.
+
 ## Output files
 
 `local_file.kubeconfig` and `local_file.talosconfig` are written to the **stack root** (`${path.root}/{kubeconfig,talosconfig}`) by default — i.e. next to the `.tf` files of whoever calls this module. Override via `var.{kubeconfig,talosconfig}_filename`.
@@ -85,6 +101,9 @@ module "talos_cluster" {
 
   pod_cidr        = var.pod_cidr
   registry_mirror = var.registry_mirror
+
+  # Required when the cluster runs an external CCM (here: the Proxmox CCM).
+  external_cloud_provider = true
 }
 ```
 
@@ -136,6 +155,7 @@ No modules.
 | <a name="input_cp_hostname_prefix"></a> [cp\_hostname\_prefix](#input\_cp\_hostname\_prefix) | Hostname prefix for control-plane nodes. Final names: <cp\_hostname\_prefix>-01, -02, … | `string` | `"tls-cp"` | no |
 | <a name="input_cp_resources"></a> [cp\_resources](#input\_cp\_resources) | Resources for each control-plane VM. | <pre>object({<br/>    cores     = number<br/>    memory_mb = number<br/>    disk_gb   = number<br/>  })</pre> | n/a | yes |
 | <a name="input_dns_domain"></a> [dns\_domain](#input\_dns\_domain) | DNS domain that dnsmasq on the Proxmox host registers VM hostnames into. Node FQDN: <vm\_name>.<dns\_domain>. | `string` | n/a | yes |
+| <a name="input_external_cloud_provider"></a> [external\_cloud\_provider](#input\_external\_cloud\_provider) | When true, every node's kubelet starts with `--cloud-provider=external`<br/>(machine.kubelet.extraArgs). Required by an out-of-tree cloud-controller-<br/>manager (here: the Proxmox CCM) — without it the kubelet never applies the<br/>`node.cloudprovider.kubernetes.io/uninitialized` taint and the CCM cannot<br/>stamp `providerID` / topology labels onto the node.<br/><br/>Leave false for a cluster with no external CCM, otherwise nodes stay tainted<br/>`uninitialized` forever. The 10-cluster stack sets this true because it<br/>deploys the Proxmox CCM (see modules/proxmox-csi). | `bool` | `false` | no |
 | <a name="input_kubeconfig_filename"></a> [kubeconfig\_filename](#input\_kubeconfig\_filename) | Where to write the local kubeconfig file. Defaults to <stack-root>/kubeconfig. | `string` | `null` | no |
 | <a name="input_kubernetes_version"></a> [kubernetes\_version](#input\_kubernetes\_version) | Kubernetes version for Talos. The provider picks the right tags for kube-apiserver / scheduler / controller-manager / kubelet. | `string` | n/a | yes |
 | <a name="input_num_control_planes"></a> [num\_control\_planes](#input\_num\_control\_planes) | Number of control-plane nodes. 3 is recommended for HA. | `number` | n/a | yes |

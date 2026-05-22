@@ -15,6 +15,11 @@ variable "cluster_name" {
 variable "dns_domain" {
   type        = string
   description = "DNS domain that dnsmasq on the Proxmox host registers VM hostnames into. Node FQDN: <vm_name>.<dns_domain>."
+
+  validation {
+    condition     = can(regex("^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)+$", var.dns_domain))
+    error_message = "dns_domain: must be a valid DNS domain with at least two labels, e.g. lab.lan or home.lab.local."
+  }
 }
 
 variable "cp_hostname_prefix" {
@@ -168,6 +173,26 @@ variable "registry_mirror" {
     condition     = var.registry_mirror == null || can(regex("^https?://[^/]+$|^https?://[^/]+/[^/]*$", var.registry_mirror.endpoint))
     error_message = "registry_mirror.endpoint must look like https://host[:port] or https://host[:port]/path."
   }
+}
+
+###############################################################################
+# External cloud provider
+###############################################################################
+
+variable "external_cloud_provider" {
+  type        = bool
+  description = <<-EOT
+    When true, every node's kubelet starts with `--cloud-provider=external`
+    (machine.kubelet.extraArgs). Required by an out-of-tree cloud-controller-
+    manager (here: the Proxmox CCM) — without it the kubelet never applies the
+    `node.cloudprovider.kubernetes.io/uninitialized` taint and the CCM cannot
+    stamp `providerID` / topology labels onto the node.
+
+    Leave false for a cluster with no external CCM, otherwise nodes stay tainted
+    `uninitialized` forever. The 10-cluster stack sets this true because it
+    deploys the Proxmox CCM (see modules/proxmox-csi).
+  EOT
+  default     = false
 }
 
 ###############################################################################

@@ -23,4 +23,11 @@ module "talos_cluster" {
 
   pod_cidr        = var.pod_cidr
   registry_mirror = var.registry_mirror
+
+  # Run kubelet with --cloud-provider=external so the Proxmox CCM (deployed via
+  # Flux, see proxmox-csi.tf / modules/proxmox-csi) can stamp providerID and
+  # topology labels onto each node — a hard prerequisite for the Proxmox CSI
+  # plugin. Toggling this rolls a new machineconfig to every node.
+  # Mirrors var.enable_proxmox_csi so the two always move together.
+  external_cloud_provider = var.enable_proxmox_csi
 }

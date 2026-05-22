@@ -31,7 +31,12 @@ variable "prx" {
     api_token = string
   })
   sensitive   = true
-  description = "Proxmox API endpoint and credentials."
+  description = "Proxmox API endpoint and credentials. api_token must be in the form `user@realm!token-name=<uuid>` (bpg/proxmox format)."
+
+  validation {
+    condition     = can(regex("^[^=]+![^=]+=[a-fA-F0-9]{8}-[a-fA-F0-9]{4}-[a-fA-F0-9]{4}-[a-fA-F0-9]{4}-[a-fA-F0-9]{12}$", var.prx.api_token))
+    error_message = "prx.api_token must be in the form 'user@realm!token-name=xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx' (UUID after '=')."
+  }
 }
 
 variable "prx_node" {
@@ -270,6 +275,23 @@ variable "flux_path" {
   type        = string
   description = "Path inside the Git repo that Flux watches. Defaults to clusters/<cluster_name> when null."
   default     = null
+}
+
+###############################################################################
+# Proxmox CSI / CCM toggle
+###############################################################################
+
+variable "enable_proxmox_csi" {
+  type        = bool
+  default     = true
+  description = <<-EOT
+    When true, deploys the shared Proxmox config Secret + namespace (via
+    modules/proxmox-csi) AND runs the kubelet with --cloud-provider=external.
+    The two must always move together: enabling one without the other either
+    leaves nodes tainted `uninitialized` forever (CCM absent) or makes the CSI
+    Secret land before the namespace exists (module absent).
+    Toggle to false only in environments without the Proxmox CCM/CSI HelmReleases.
+  EOT
 }
 
 ###############################################################################

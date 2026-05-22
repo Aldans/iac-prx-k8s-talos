@@ -91,3 +91,17 @@ output "public_apps" {
   }
 }
 
+###############################################################################
+# Persistent storage (Proxmox CCM + CSI)
+###############################################################################
+
+output "proxmox_csi_namespace" {
+  description = "Namespace holding the shared Proxmox config Secret. The CCM + CSI HelmReleases (Flux) deploy here. Null when enable_proxmox_csi = false."
+  value       = one(module.proxmox_csi[*].namespace)
+}
+
+output "proxmox_csi_config_secret_name" {
+  description = "Name of the shared Proxmox config Secret. Wire as existingConfigSecret in the CCM and CSI HelmReleases. Null when enable_proxmox_csi = false."
+  value       = one(module.proxmox_csi[*].config_secret_name)
+}
+

@@ -31,13 +31,15 @@ Networking model — **DHCP + DNS via `dnsmasq` on the Proxmox host**. Hostnames
 │   │   ├── credentials.auto.tfvars[-exemple]
 │   │   └── README.md
 │   └── 10-cluster/                    # Talos + Cilium + Flux. Remote TF state in 00-storage's Garage.
-│       ├── 00_images.tf … 04_flux.tf
+│       ├── main.tf talos_cluster.tf cilium.tf flux.tf
+│       ├── cloudflare.tf proxmox-csi.tf moved.tf
 │       ├── providers.tf variables.tf outputs.tf
-│       ├── helm/cilium/cilium-values.yaml.tftpl
 │       ├── backend.s3.hcl[.example]   # gitignored; .example is the template
 │       ├── credentials.auto.tfvars[-exemple]
 │       └── README.md                  # cluster deep-dive, troubleshooting
-├── modules/                           # reusable modules (Phase 2 — empty for now)
+├── modules/                           # reusable modules: talos-cluster, cilium,
+│                                      #   flux-bootstrap, storage, cloudflare-tunnel,
+│                                      #   cloudflare-public-app, proxmox-csi
 ├── tests/                             # native TF tests (`*.tftest.hcl`)
 ├── docs/adr/                          # Architecture Decision Records
 ├── .github/workflows/                 # CI (Phase 4)
@@ -47,7 +49,7 @@ Networking model — **DHCP + DNS via `dnsmasq` on the Proxmox host**. Hostnames
 └── README.md CLAUDE.md TODO.md
 ```
 
-The numeric prefixes inside a stack (`00_images.tf`, `01_vms.tf`, …) are **just reading order** — Terraform builds the graph from references. Numeric prefixes on **stack directories** (`00-storage`, `10-cluster`), on the other hand, do imply apply order.
+Inside `00-storage` the numeric file prefixes (`00_image.tf`, `01_vm.tf`, …) are **just reading order** — Terraform builds the graph from references. `10-cluster` uses semantic file names (`talos_cluster.tf`, `cilium.tf`, …). Numeric prefixes on **stack directories** (`00-storage`, `10-cluster`), on the other hand, do imply apply order.
 
 ## Apply order (one-time bootstrap)
 
@@ -97,6 +99,16 @@ No hardcoded timeouts — only real probes.
 - **Single-endpoint kubeconfig**: `cluster_endpoint` points at the first CP's FQDN. If that CP physically dies, external `kubectl` cannot connect (etcd quorum inside the cluster keeps working). Full HA needs a Talos VIP — backlogged (TODO #9).
 - **GitHub repo creation**: if `${github_owner}/${github_repo}` already exists, `apply` fails with 422. Workaround: `terraform import module.flux_bootstrap.github_repository.flux ${repo_name}` or delete the old repo first.
 - **`00-storage` state is local**: chicken-and-egg — Garage stores state but Garage itself does not exist yet on first apply. Mitigations: chmod 600, periodic backup of `environments/<env>/00-storage/terraform.tfstate*` to NAS / encrypted USB.
+- **Orphaned zvols on destroy**: PersistentVolumes are created by the Proxmox CSI controller — they are tracked by neither Terraform nor Flux. `terraform destroy` kills the VMs before the CSI `Delete` reclaim runs, so the backing zvols stay on Proxmox `local-zfs`. After a destroy, clean them up manually (`pvesm list local-zfs` → delete the orphans).
+
+## Persistent storage (Proxmox CCM + CSI)
+
+In-cluster persistent storage is provided by the **Proxmox CSI plugin**, which needs the **Proxmox Cloud Controller Manager (CCM)** to first stamp `spec.providerID` onto every node — Talos' kubelet does not. Split across the usual TF/Flux seam:
+
+- **Terraform** — `modules/proxmox-csi` creates namespace `csi-proxmox` + the shared Proxmox API `Secret`; `modules/talos-cluster` runs the kubelet with `--cloud-provider=external` (`external_cloud_provider = true`).
+- **Flux** — `infrastructure/controllers/proxmox-ccm/` and `proxmox-csi/` hold the HelmReleases; the latter also defines the default `proxmox-zfs` StorageClass. CCM reconciles before CSI (HelmRelease `dependsOn`).
+
+Toggling `external_cloud_provider` rolls a new machineconfig to every node (kubelet restart) — do it in a maintenance window. See `modules/proxmox-csi/README.md`.
 
 ## Protected resources (prevent_destroy)
 
@@ -122,6 +134,8 @@ Destroying either requires `terraform state rm <addr>` first (Terraform stops tr
 | Talos | `v1.13.0` | `var.talos_version` |
 | Kubernetes | `1.34.x` | Talos picks the right tags; pinned in machineconfig |
 | Cilium | `1.17.2` | `helm_release.cilium.version` |
+| Proxmox CCM chart | `0.2.28` | Flux HelmRelease, OCI `ghcr.io/sergelogvinov/charts` |
+| Proxmox CSI chart | `0.5.7` | Flux HelmRelease, OCI `ghcr.io/sergelogvinov/charts` |
 | Flux | latest 2.x chart | via provider |
 | provider bpg/proxmox | `0.69.0` | stable — do not bump without reading the changelog |
 | provider siderolabs/talos | `0.7.1` | stable |
@@ -132,6 +146,8 @@ Destroying either requires `terraform state rm <addr>` first (Terraform stops tr
 | provider hashicorp/tls | `~> 4.0` | for the Flux SSH deploy key |
 | provider hashicorp/local | `~> 2.5` | for the local_file kubeconfig/talosconfig |
 | provider hashicorp/null | `~> 3.2` | for null_resource.wait_apiserver |
+| provider cloudflare/cloudflare | `~> 5.0` | Cloudflare Tunnel + DNS + Access |
+| provider hashicorp/random | `~> 3.6` | tunnel secret generation |
 
 ## Working conventions
 

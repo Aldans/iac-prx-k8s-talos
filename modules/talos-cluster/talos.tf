@@ -141,6 +141,18 @@ locals {
     }
   }
 
+  # Out-of-tree cloud provider. Makes the kubelet hand cloud-specific node
+  # initialization to an external CCM (the Proxmox CCM) — see var description.
+  external_cloud_provider_patch = var.external_cloud_provider ? {
+    machine = {
+      kubelet = {
+        extraArgs = {
+          "cloud-provider" = "external"
+        }
+      }
+    }
+  } : null
+
   # Local-file output paths — default to the stack root so kubeconfig/talosconfig
   # land next to the .tf files of the stack consuming this module.
   kubeconfig_filename  = coalesce(var.kubeconfig_filename, "${path.root}/kubeconfig")
@@ -179,6 +191,7 @@ data "talos_machine_configuration" "cp" {
       }),
       yamlencode(local.common_machine_config_patch),
     ],
+    local.external_cloud_provider_patch == null ? [] : [yamlencode(local.external_cloud_provider_patch)],
     local.registry_mirror_patch == null ? [] : [yamlencode(local.registry_mirror_patch)],
     local.registry_files_patch == null ? [] : [yamlencode(local.registry_files_patch)],
   )
@@ -205,6 +218,7 @@ data "talos_machine_configuration" "worker" {
       }),
       yamlencode(local.common_machine_config_patch),
     ],
+    local.external_cloud_provider_patch == null ? [] : [yamlencode(local.external_cloud_provider_patch)],
     local.registry_mirror_patch == null ? [] : [yamlencode(local.registry_mirror_patch)],
     local.registry_files_patch == null ? [] : [yamlencode(local.registry_files_patch)],
   )
