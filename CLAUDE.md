@@ -192,7 +192,7 @@ Destroying either requires `terraform state rm <addr>` first (Terraform stops tr
 - `Stop` → if ≥3 `.tf` files were edited, soft reminder about `/test` or `/cycle`
 
 **Intentionally NOT automated:**
-- `terraform apply` / `destroy` — destructive, always manual
+- `terraform destroy` — destructive, always manual
 - Auto-running `/audit` after every fix — recursion risk
 
 ## What to do after apply
