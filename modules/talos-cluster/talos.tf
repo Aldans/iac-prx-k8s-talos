@@ -153,6 +153,26 @@ locals {
     }
   } : null
 
+  # kube-controller-manager / kube-scheduler bind their secure metrics port on
+  # 127.0.0.1 by default on Talos — unreachable for an off-host Prometheus.
+  # Rebind to 0.0.0.0 so kube-prometheus-stack can scrape them. Control-plane
+  # only: these components are static pods on CP nodes; the patch is appended
+  # to the CP machineconfig, not the worker one.
+  controlplane_metrics_patch = var.controlplane_metrics ? {
+    cluster = {
+      controllerManager = {
+        extraArgs = {
+          "bind-address" = "0.0.0.0"
+        }
+      }
+      scheduler = {
+        extraArgs = {
+          "bind-address" = "0.0.0.0"
+        }
+      }
+    }
+  } : null
+
   # Local-file output paths — default to the stack root so kubeconfig/talosconfig
   # land next to the .tf files of the stack consuming this module.
   kubeconfig_filename  = coalesce(var.kubeconfig_filename, "${path.root}/kubeconfig")
@@ -192,6 +212,7 @@ data "talos_machine_configuration" "cp" {
       yamlencode(local.common_machine_config_patch),
     ],
     local.external_cloud_provider_patch == null ? [] : [yamlencode(local.external_cloud_provider_patch)],
+    local.controlplane_metrics_patch == null ? [] : [yamlencode(local.controlplane_metrics_patch)],
     local.registry_mirror_patch == null ? [] : [yamlencode(local.registry_mirror_patch)],
     local.registry_files_patch == null ? [] : [yamlencode(local.registry_files_patch)],
   )

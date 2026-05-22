@@ -55,6 +55,7 @@ locals {
     gateway_api_enabled             = var.gateway_api_enabled
     gateway_api_create_class        = var.gateway_api_create_class
     gateway_api_secrets_namespace   = var.gateway_api_secrets_namespace
+    monitoring_enabled              = var.monitoring_enabled
   })
 
   cilium_values_sha = sha256(local.cilium_values)

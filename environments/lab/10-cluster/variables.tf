@@ -349,3 +349,56 @@ variable "admin_emails" {
     error_message = "admin_emails must contain at least one address — otherwise Access policies deny everyone."
   }
 }
+
+###############################################################################
+# Monitoring (Phase 2)
+###############################################################################
+
+variable "enable_monitoring" {
+  type        = bool
+  default     = true
+  description = <<-EOT
+    Master toggle for the Phase 2 observability stack's Terraform surface.
+    When true:
+      - modules/cilium renders Cilium + Hubble Prometheus metrics and their
+        ServiceMonitor objects (monitoring_enabled);
+      - modules/talos-cluster binds kube-controller-manager / kube-scheduler
+        metrics on 0.0.0.0 so they are scrapeable (controlplane_metrics).
+    Both are machineconfig / Helm-values changes — flipping this rolls the
+    Cilium data plane and the CP machineconfig. The `monitoring` namespace and
+    its Secrets (monitoring.tf) and the Grafana public-app (cloudflare.tf) are
+    created unconditionally — same as the cloudflared tunnel surface.
+  EOT
+}
+
+variable "loki_s3" {
+  type = object({
+    access_key_id     = string
+    secret_access_key = string
+  })
+  sensitive   = true
+  description = <<-EOT
+    Garage S3 credentials for Loki's chunk store (bucket `loki-chunks`).
+    monitoring.tf turns these into the `loki-s3-credentials` Secret in the
+    `monitoring` namespace; the Loki HelmRelease (home-lab-flux) consumes them
+    as the AWS SDK env vars (AWS_ACCESS_KEY_ID / AWS_SECRET_ACCESS_KEY).
+
+    Create a least-privilege key on the storage VM:
+      garage key create loki
+      garage bucket allow --read --write loki-chunks --key loki
+      garage key info --show-secret loki
+
+    Endpoint / bucket / region are not secret and are set in the Loki
+    HelmRelease values, not here.
+  EOT
+
+  validation {
+    condition     = can(regex("^GK[0-9a-f]{24}$", var.loki_s3.access_key_id))
+    error_message = "loki_s3.access_key_id: a Garage key id — 'GK' followed by 24 hex characters."
+  }
+
+  validation {
+    condition     = can(regex("^[0-9a-f]{64}$", var.loki_s3.secret_access_key))
+    error_message = "loki_s3.secret_access_key: a Garage secret key — 64 lowercase hex characters."
+  }
+}

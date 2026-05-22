@@ -32,7 +32,7 @@ Networking model — **DHCP + DNS via `dnsmasq` on the Proxmox host**. Hostnames
 │   │   └── README.md
 │   └── 10-cluster/                    # Talos + Cilium + Flux. Remote TF state in 00-storage's Garage.
 │       ├── main.tf talos_cluster.tf cilium.tf flux.tf
-│       ├── cloudflare.tf proxmox-csi.tf moved.tf
+│       ├── cloudflare.tf proxmox-csi.tf monitoring.tf moved.tf
 │       ├── providers.tf variables.tf outputs.tf
 │       ├── backend.s3.hcl[.example]   # gitignored; .example is the template
 │       ├── credentials.auto.tfvars[-exemple]
@@ -147,7 +147,7 @@ Destroying either requires `terraform state rm <addr>` first (Terraform stops tr
 | provider hashicorp/local | `~> 2.5` | for the local_file kubeconfig/talosconfig |
 | provider hashicorp/null | `~> 3.2` | for null_resource.wait_apiserver |
 | provider cloudflare/cloudflare | `~> 5.0` | Cloudflare Tunnel + DNS + Access |
-| provider hashicorp/random | `~> 3.6` | tunnel secret generation |
+| provider hashicorp/random | `~> 3.6` | tunnel secret + Grafana admin password generation |
 
 ## Working conventions
 

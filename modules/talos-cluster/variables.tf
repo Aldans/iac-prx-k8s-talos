@@ -195,6 +195,22 @@ variable "external_cloud_provider" {
   default     = false
 }
 
+variable "controlplane_metrics" {
+  type        = bool
+  description = <<-EOT
+    When true, kube-controller-manager and kube-scheduler are patched to bind
+    their secure metrics port on 0.0.0.0 (cluster.controllerManager /
+    cluster.scheduler extraArgs `bind-address`). Talos binds them on 127.0.0.1
+    by default, so Prometheus running off-host cannot scrape them.
+
+    Applies to control-plane nodes only. Toggling this rolls a new
+    machineconfig to every CP node (kube-controller-manager / kube-scheduler
+    static pods restart). The 10-cluster stack sets this true for the Phase 2
+    observability stack.
+  EOT
+  default     = false
+}
+
 ###############################################################################
 # Local-file output paths
 ###############################################################################

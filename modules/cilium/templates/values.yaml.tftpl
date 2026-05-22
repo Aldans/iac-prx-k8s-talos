@@ -15,6 +15,7 @@
 #   $${gateway_api_enabled}             — bool, when true Cilium serves Gateway API
 #   $${gateway_api_create_class}        — bool, whether chart creates `cilium` GatewayClass
 #   $${gateway_api_secrets_namespace}   — string, optional cross-namespace TLS secret allowlist
+#   $${monitoring_enabled}              — bool, when true expose Cilium + Hubble Prometheus metrics
 
 cluster:
   name: ${cluster_name}
@@ -59,9 +60,47 @@ hubble:
     enabled: true
   ui:
     enabled: true
+%{ if monitoring_enabled ~}
+  # ----- Hubble network-flow metrics → Prometheus -----------------------------
+  # Each entry exposes one metric family on the cilium-agent metrics port.
+  # serviceMonitor renders a monitoring.coreos.com/v1 ServiceMonitor — the
+  # Prometheus Operator CRDs must already exist (installed by Flux:
+  # infrastructure/controllers/prometheus-operator-crds).
+  metrics:
+    enabled:
+      - dns
+      - drop
+      - tcp
+      - flow
+      - port-distribution
+      - icmp
+      - httpV2
+    serviceMonitor:
+      enabled: true
+    # Hubble Grafana dashboards as ConfigMaps (label grafana_dashboard) — picked
+    # up by the kube-prometheus-stack Grafana sidecar (searchNamespace: ALL).
+    dashboards:
+      enabled: true
+%{ endif ~}
 
 operator:
   replicas: 1
+%{ if monitoring_enabled ~}
+  # cilium-operator metrics endpoint + its ServiceMonitor.
+  prometheus:
+    enabled: true
+    serviceMonitor:
+      enabled: true
+%{ endif ~}
+
+%{ if monitoring_enabled ~}
+# ----- cilium-agent metrics → Prometheus --------------------------------------
+# Exposes the cilium-agent metrics endpoint and renders its ServiceMonitor.
+prometheus:
+  enabled: true
+  serviceMonitor:
+    enabled: true
+%{ endif ~}
 
 hostServices:
   enabled: false

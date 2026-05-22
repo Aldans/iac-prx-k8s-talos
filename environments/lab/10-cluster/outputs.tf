@@ -88,7 +88,21 @@ output "public_apps" {
       fqdn   = module.app_hubble.fqdn
       access = module.app_hubble.access_enabled
     }
+    grafana = {
+      fqdn   = module.app_grafana.fqdn
+      access = module.app_grafana.access_enabled
+    }
   }
+}
+
+###############################################################################
+# Monitoring (Phase 2)
+###############################################################################
+
+output "grafana_admin_password" {
+  description = "Generated Grafana admin password (user: admin). Retrieve with: terraform output -raw grafana_admin_password"
+  value       = random_password.grafana_admin.result
+  sensitive   = true
 }
 
 ###############################################################################
@@ -104,4 +118,3 @@ output "proxmox_csi_config_secret_name" {
   description = "Name of the shared Proxmox config Secret. Wire as existingConfigSecret in the CCM and CSI HelmReleases. Null when enable_proxmox_csi = false."
   value       = one(module.proxmox_csi[*].config_secret_name)
 }
-

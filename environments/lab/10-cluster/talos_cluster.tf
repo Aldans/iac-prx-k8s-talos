@@ -30,4 +30,9 @@ module "talos_cluster" {
   # plugin. Toggling this rolls a new machineconfig to every node.
   # Mirrors var.enable_proxmox_csi so the two always move together.
   external_cloud_provider = var.enable_proxmox_csi
+
+  # Phase 2 observability: bind kube-controller-manager / kube-scheduler metrics
+  # on 0.0.0.0 so kube-prometheus-stack can scrape them. Rolls a new
+  # machineconfig to every CP node — see modules/talos-cluster/README.md.
+  controlplane_metrics = var.enable_monitoring
 }

@@ -188,3 +188,25 @@ variable "rollout_daemonset_timeout" {
   description = "Maximum time to wait for ds/cilium + ds/cilium-envoy rollout. Format: kubectl --timeout. Bump if you have many nodes — rolling restart is sequential."
   default     = "300s"
 }
+
+###############################################################################
+# Prometheus / Hubble metrics
+#
+# When enabled the chart turns on:
+#   - prometheus.enabled            — cilium-agent metrics endpoint
+#   - operator.prometheus.enabled   — cilium-operator metrics endpoint
+#   - hubble.metrics.enabled        — Hubble network-flow metrics
+#   - *.serviceMonitor.enabled      — ServiceMonitor objects for Prometheus
+#
+# The ServiceMonitor objects are monitoring.coreos.com/v1 kinds: the Prometheus
+# Operator CRDs MUST already exist in the cluster, otherwise `helm upgrade`
+# fails on an unknown kind. In this repo the CRDs are installed by Flux
+# (infrastructure/controllers/prometheus-operator-crds) — keep that ahead of
+# the Terraform apply that flips this on.
+###############################################################################
+
+variable "monitoring_enabled" {
+  type        = bool
+  description = "Enable Cilium + Hubble Prometheus metrics and render ServiceMonitor objects for them. Requires the Prometheus Operator CRDs to be present in the cluster first. Flipping this rolls the Cilium data plane (see rollout_on_values_change)."
+  default     = false
+}

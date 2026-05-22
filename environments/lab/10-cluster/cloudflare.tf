@@ -52,3 +52,24 @@ module "app_hubble" {
     allowed_emails = var.admin_emails
   }
 }
+
+# Grafana — observability dashboards (Phase 2). Grafana has its own login, but
+# it is an admin-tier surface, so Cloudflare Access gates it as well. The
+# in-cluster HTTPRoute and the cloudflared tunnel route are owned by Flux
+# (home-lab-flux infrastructure/controllers/monitoring/ and cloudflared/).
+module "app_grafana" {
+  source = "../../../modules/cloudflare-public-app"
+
+  account_id          = var.cloudflare_account_id
+  zone_id             = module.cloudflare_tunnel.zone_id
+  tunnel_cname_target = module.cloudflare_tunnel.tunnel_cname_target
+
+  app_name         = "grafana"
+  public_subdomain = var.public_subdomain
+  public_domain    = var.public_domain
+
+  access = {
+    enabled        = true
+    allowed_emails = var.admin_emails
+  }
+}
