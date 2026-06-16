@@ -33,7 +33,10 @@ resource "github_repository" "flux" {
   visibility  = "private"
   auto_init   = var.auto_init_repo
 
-  has_issues   = false
+  # Issues are enabled so the self-hosted Renovate bot can post its Dependency
+  # Dashboard here (with dependencyDashboardApproval the dashboard IS the approval
+  # gate — without it Renovate can neither surface nor open update PRs for this repo).
+  has_issues   = true
   has_projects = false
   has_wiki     = false
 
