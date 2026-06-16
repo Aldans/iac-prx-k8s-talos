@@ -1,0 +1,68 @@
+{
+  "$schema": "https://docs.renovatebot.com/renovate-schema.json",
+  "extends": ["config:recommended", ":semanticCommits"],
+  "timezone": "America/Los_Angeles",
+  "schedule": ["* 0-6 * * 1"],
+  "dependencyDashboard": true,
+  "dependencyDashboardApproval": true,
+  "prConcurrentLimit": 5,
+  "prHourlyLimit": 2,
+  "labels": ["renovate"],
+  "packageRules": [
+    {
+      "description": "Low-risk: automerge patch+digest of GitHub Actions and pre-commit hooks",
+      "matchManagers": ["github-actions", "pre-commit"],
+      "matchUpdateTypes": ["patch", "digest", "pin"],
+      "automerge": true,
+      "platformAutomerge": true
+    },
+    {
+      "description": "bpg/proxmox — do not bump blind (CLAUDE.md). Separate PR, no automerge, label.",
+      "matchDatasources": ["terraform-provider"],
+      "matchPackageNames": ["bpg/proxmox"],
+      "automerge": false,
+      "addLabels": ["provider-proxmox", "read-changelog"]
+    },
+    {
+      "description": "hashicorp/kubernetes 3.x is a separate major upgrade task",
+      "matchPackageNames": ["hashicorp/kubernetes"],
+      "matchUpdateTypes": ["major"],
+      "addLabels": ["major-upgrade"]
+    }
+  ],
+  "customManagers": [
+    {
+      "customType": "regex",
+      "description": "Talos version (var.talos_version)",
+      "managerFilePatterns": ["/environments/.+/10-cluster/variables\\.tf$/"],
+      "matchStrings": ["talos_version[\\s\\S]*?default\\s*=\\s*\"(?<currentValue>v[^\"]+)\""],
+      "datasourceTemplate": "github-releases",
+      "depNameTemplate": "siderolabs/talos"
+    },
+    {
+      "customType": "regex",
+      "description": "Cilium chart version (var.cilium_version)",
+      "managerFilePatterns": ["/environments/.+/10-cluster/variables\\.tf$/"],
+      "matchStrings": ["cilium_version[\\s\\S]*?default\\s*=\\s*\"(?<currentValue>[^\"]+)\""],
+      "datasourceTemplate": "helm",
+      "depNameTemplate": "cilium",
+      "registryUrlTemplate": "https://helm.cilium.io"
+    },
+    {
+      "customType": "regex",
+      "description": "Garage version (var.garage_version)",
+      "managerFilePatterns": ["/environments/.+/00-storage/variables\\.tf$/"],
+      "matchStrings": ["garage_version[\\s\\S]*?default\\s*=\\s*\"(?<currentValue>v[^\"]+)\""],
+      "datasourceTemplate": "docker",
+      "depNameTemplate": "dxflrs/garage"
+    },
+    {
+      "customType": "regex",
+      "description": "Zot version (var.zot_version)",
+      "managerFilePatterns": ["/environments/.+/00-storage/variables\\.tf$/"],
+      "matchStrings": ["zot_version[\\s\\S]*?default\\s*=\\s*\"(?<currentValue>v[^\"]+)\""],
+      "datasourceTemplate": "github-releases",
+      "depNameTemplate": "project-zot/zot"
+    }
+  ]
+}

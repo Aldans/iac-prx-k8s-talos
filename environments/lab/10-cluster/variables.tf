@@ -278,6 +278,16 @@ variable "flux_path" {
 }
 
 ###############################################################################
+# Renovate (dependency-update bot)
+###############################################################################
+
+variable "renovate_github_token" {
+  type        = string
+  sensitive   = true
+  description = "GitHub fine-grained PAT for the self-hosted Renovate bot. Scoped to both repos with Contents / Pull requests / Workflows / Issues = Read and write. Delivered as the renovate-credentials Secret (RENOVATE_TOKEN)."
+}
+
+###############################################################################
 # Proxmox CSI / CCM toggle
 ###############################################################################
 

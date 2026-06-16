@@ -149,6 +149,8 @@ Destroying either requires `terraform state rm <addr>` first (Terraform stops tr
 | provider cloudflare/cloudflare | `~> 5.0` | Cloudflare Tunnel + DNS + Access |
 | provider hashicorp/random | `~> 3.6` | tunnel secret + Grafana admin password generation |
 
+> **Renovate** (self-hosted CronJob — `environments/lab/10-cluster/renovate.tf` + root `renovate.json`; Flux workload in `home-lab-flux/infrastructure/controllers/renovate/`) opens PRs to bump these: TF providers, GitHub Actions, pre-commit hooks, Flux Helm charts, container images, and the `talos`/`cilium`/`garage`/`zot` version vars (custom managers). It edits **code, not this table** — so the numbers above can drift after a merge. Treat `variables.tf` / `providers.tf` / the Flux HelmReleases as source of truth and re-sync this table by hand (the `docs-sync-checker` agent catches drift). `terraform apply` and PR merges stay manual.
+
 ## Working conventions
 
 - **Never** use `element(flatten(ipv4_addresses), N)` — too brittle, qemu-agent returns addresses in unpredictable order. Use FQDN from `var.dns_domain` instead.
