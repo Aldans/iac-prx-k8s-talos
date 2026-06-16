@@ -244,16 +244,19 @@ This becomes the "starter pack" pulled in via Flux Kustomizations.
 
 ---
 
-### 8. Renovate / Dependabot
-**Problem:** Provider versions drift (today: `bpg/proxmox 0.69.0` is 37 minors behind latest). Talos and Cilium chart versions also drift. Manual upgrades are easy to forget.
+### 8. Renovate / Dependabot ✅ DONE (2026-06-16)
+**Problem:** Provider versions drift (`bpg/proxmox 0.69.0` was ~40 minors behind). Talos, Cilium and Helm chart versions also drift. Manual upgrades are easy to forget.
 
-**Solution:** `.github/renovate.json` watching:
-- Terraform providers in `.terraform.lock.hcl`.
-- `var.talos_version`, `var.cilium_version` (regex-driven version-ranges).
-- Helm chart versions in the Flux repo.
-- Renovate opens PRs with version bumps; CI tests them; user reviews and merges.
+**Implemented:** Self-hosted Renovate as an in-cluster CronJob (NOT the Mend App / Dependabot) — namespace `renovate`, weekly Mon 06:00 `America/Los_Angeles`. GitHub token Terraform-managed (`environments/lab/10-cluster/renovate.tf`); CronJob + global config in Flux (`home-lab-flux/infrastructure/controllers/renovate/`). Watches **both** repos via a root `renovate.json` in each:
+- Terraform providers (`iac-prx-k8s-talos`) + GitHub Actions + pre-commit hooks.
+- Flux Helm chart versions + container images (`flux-mf`); `flux`/`kubernetes` managers pointed at `infrastructure/**` (their defaults miss it).
+- `customManagers` (regex) for the version vars the built-in TF manager can't see: `talos_version`, `cilium_version`, `garage_version`, `zot_version`.
+- Approval-gated **Dependency Dashboards** (`dependencyDashboardApproval`) — no PR floods; low-risk automerge for GitHub Actions / pre-commit patch+digest only. `terraform apply` and PR merges stay manual.
+- `flux-mf` also gained a `validate` CI (kustomize build + kubeconform) so chart/image bumps are caught before merge, not at reconcile.
 
-**Effort:** 30 min.
+First update round landed (GitHub Actions majors, `cloudflared`, `kube-prometheus-stack 85.4.0`, headlamp plugin digest pins). Deferred (review per changelog): provider `proxmox`/`kubernetes`/`talos` majors, `cilium`/`loki`/`kube-prometheus-stack` majors, `cert-manager`; Talos OS + storage-VM bumps need a maintenance window.
+
+**Note:** plan + grabel'i in `../renovate-deploy-plan.md` (sibling of the repo).
 
 ---
 
