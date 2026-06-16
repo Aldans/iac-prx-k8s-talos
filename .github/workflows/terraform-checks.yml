@@ -119,7 +119,7 @@ jobs:
           # gitleaks-action scans the full history; needs all commits.
           fetch-depth: 0
 
-      - uses: gitleaks/gitleaks-action@v2
+      - uses: gitleaks/gitleaks-action@v3
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           # GITLEAKS_LICENSE only needed for org accounts; skip for personal.
