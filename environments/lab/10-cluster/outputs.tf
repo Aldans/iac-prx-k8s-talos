@@ -92,6 +92,10 @@ output "public_apps" {
       fqdn   = module.app_grafana.fqdn
       access = module.app_grafana.access_enabled
     }
+    headlamp = {
+      fqdn   = module.app_headlamp.fqdn
+      access = module.app_headlamp.access_enabled
+    }
   }
 }
 

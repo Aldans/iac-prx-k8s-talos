@@ -73,3 +73,28 @@ module "app_grafana" {
     allowed_emails = var.admin_emails
   }
 }
+
+# Headlamp — Kubernetes UI / cluster visualization (Phase 3). Headlamp acts as
+# its in-cluster ServiceAccount (RBAC → cluster-admin), so it has no built-in
+# auth — identity is verified by Cloudflare Access at the edge. Admin-tier
+# surface ⇒ CF Access is MANDATORY. We deliberately do NOT wire Headlamp's own
+# OIDC: it would re-introduce the session/refresh-rotate class of issues we
+# solved for Grafana via auth.jwt (see ../headlamp-deploy-plan.md §7 pitfall #2).
+# Cluster-side resources (HelmRelease, ClusterRoleBinding, HTTPRoute) are owned
+# by Flux — home-lab-flux/infrastructure/controllers/headlamp/.
+module "app_headlamp" {
+  source = "../../../modules/cloudflare-public-app"
+
+  account_id          = var.cloudflare_account_id
+  zone_id             = module.cloudflare_tunnel.zone_id
+  tunnel_cname_target = module.cloudflare_tunnel.tunnel_cname_target
+
+  app_name         = "headlamp"
+  public_subdomain = var.public_subdomain
+  public_domain    = var.public_domain
+
+  access = {
+    enabled        = true
+    allowed_emails = var.admin_emails
+  }
+}
