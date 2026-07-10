@@ -97,6 +97,8 @@ This actually bit the lab on 2026-05-22 (a shared `registry.k8s.io/sig-storage` 
 
 **Applying a change to this setting on a running storage VM:** cloud-init runs only once, at VM creation — editing the template does **not** re-push the config. `terraform apply` on `00-storage` would see the changed `user_data` and may try to **recreate the VM** (which hosts Garage — the cluster stack's Terraform state backend). To change Zot config on the live VM, edit `/etc/zot/config.json` by hand and restart Zot; the template change only takes effect on a from-scratch rebuild.
 
+> **Known pending drift — do NOT `apply` to clear it.** The current `00-storage` state was applied *before* commit `5fdab0e` (the `dedupe: false` fix), so `terraform plan` shows `cloud_config` + `proxmox_virtual_environment_vm.storage` as **must be replaced** (`2 to add, 2 to destroy`). This is expected and harmless: the live VM was already patched by hand (see above), and the template change only bakes into cloud-init on a from-scratch rebuild. Applying it now would needlessly destroy+recreate the Garage/Zot VM (and the cluster stack's state backend). Leave the drift; it resolves itself the next time the storage stack is legitimately rebuilt. The parallel `moved { … → module.storage.* }` lines in `00-storage/moved.tf` are benign state re-addressing, not recreation.
+
 <!-- BEGIN_TF_DOCS -->
 ## Requirements
 

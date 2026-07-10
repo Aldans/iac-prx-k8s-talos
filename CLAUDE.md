@@ -100,6 +100,7 @@ No hardcoded timeouts — only real probes.
 - **GitHub repo creation**: if `${github_owner}/${github_repo}` already exists, `apply` fails with 422. Workaround: `terraform import module.flux_bootstrap.github_repository.flux ${repo_name}` or delete the old repo first.
 - **`00-storage` state is local**: chicken-and-egg — Garage stores state but Garage itself does not exist yet on first apply. Mitigations: chmod 600, periodic backup of `environments/<env>/00-storage/terraform.tfstate*` to NAS / encrypted USB.
 - **Orphaned zvols on destroy**: PersistentVolumes are created by the Proxmox CSI controller — they are tracked by neither Terraform nor Flux. `terraform destroy` kills the VMs before the CSI `Delete` reclaim runs, so the backing zvols stay on Proxmox `local-zfs`. After a destroy, clean them up manually (`pvesm list local-zfs` → delete the orphans).
+- **Expected `00-storage` plan drift (do NOT apply to clear it)**: `terraform plan` shows the storage VM + `cloud_config` as *must be replaced* (`2 add / 2 destroy`) because the state predates the `dedupe: false` cloud-init fix (commit `5fdab0e`). The live VM was already patched by hand; the drift only bakes in on a from-scratch rebuild. Applying it now would needlessly recreate the Garage/Zot VM (= the cluster state backend). See `modules/storage/README.md` → *Zot deduplication is disabled*.
 
 ## Persistent storage (Proxmox CCM + CSI)
 
