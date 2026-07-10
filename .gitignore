@@ -63,6 +63,10 @@ talosconfig
 .claude/audit-history/*
 !.claude/audit-history/.gitkeep
 
+# Serena (MCP code-indexer) local project workspace — cache, memories,
+# per-machine config. Local tooling, not part of the repo.
+.serena/
+
 # DEV directory with experimental manifests and old artefacts
 /test/
 
